@@ -1,0 +1,12 @@
+INFO:     Will watch for changes in these directories: ['D:\\projects\\ai-multiplayer-quiz-platform\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [9912] using StatReload
+INFO:     Started server process [10000]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WWARNING:  StatReload detected changes in 'main.py'. Reloading...IINFO:     Shutting downIINFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [23888]INFO:     Started server process [25340]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+

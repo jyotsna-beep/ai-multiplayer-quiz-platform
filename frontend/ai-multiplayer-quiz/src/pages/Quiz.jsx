@@ -1,32 +1,95 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import Background from "../components/Background"
 import QuizNavbar from "../components/QuizNavbar"
+import { useNavigate, useParams } from "react-router-dom"
 
-export default function Quiz() {
+export default function Quiz(){
 
-  const questionData = {
-    question: "What is the capital of India?",
-    options: ["Delhi", "Mumbai", "Kolkata", "Chennai"]
-  }
+  const { roomCode } = useParams()
 
-  const players = [
-    {name:"Jyotsna",score:1200,avatar:"🦊"},
-    {name:"Rahul",score:950,avatar:"🐼"},
-    {name:"Anita",score:820,avatar:"🐱"},
-    {name:"Ravi",score:600,avatar:"🐸"}
-  ]
+  const navigate = useNavigate()
 
+  const wsRef = useRef(null)
+
+  const [question,setQuestion] = useState(null)
+  const [players,setPlayers] = useState([])
   const [selected,setSelected] = useState(null)
   const [time,setTime] = useState(15)
 
+
   useEffect(()=>{
+
+    const playerName = localStorage.getItem("playerName")
+
+    const ws = new WebSocket(
+      `ws://127.0.0.1:8000/ws/${roomCode}/${playerName}`
+    )
+
+    wsRef.current = ws
+
+    ws.onmessage = (event)=>{
+
+      const data = JSON.parse(event.data)
+
+
+      if(data.type === "question"){
+
+        setQuestion(data.question)
+
+        setSelected(null)
+
+        setTime(15)
+
+      }
+
+
+      if(data.type === "leaderboard"){
+        setPlayers(data.scores)
+      }
+
+
+      if(data.type === "game_over"){
+
+        navigate("/winner",{
+          state:{ leaderboard:data.scores }
+        })
+
+      }
+
+    }
+
+    return ()=>ws.close()
+
+  },[roomCode])
+
+
+  useEffect(()=>{
+
     const timer = setInterval(()=>{
       setTime(prev => prev>0 ? prev-1 : 0)
     },1000)
 
     return ()=>clearInterval(timer)
+
   },[])
+
+
+  const sendAnswer = (option)=>{
+
+    setSelected(option)
+
+    if(wsRef.current){
+
+      wsRef.current.send(JSON.stringify({
+        event:"answer",
+        answer:option
+      }))
+
+    }
+
+  }
+
 
   const colors = [
     "bg-red-500",
@@ -39,34 +102,34 @@ export default function Quiz() {
 
   const progress = (time/15)*100
 
-  return (
+
+  return(
+
     <div className="min-h-screen bg-[#FFF6F3] relative">
 
       <Background />
       <QuizNavbar />
 
-      {/* MAIN GAME AREA */}
-
       <div className="flex justify-center mt-24 px-6">
 
         <div className="flex gap-10 w-[1200px]">
 
-          {/* QUESTION SECTION */}
+          {/* QUESTION AREA */}
 
           <div className="flex-1">
-
-            {/* QUESTION CARD */}
 
             <div className="glow-card mb-6">
 
               <h2 className="text-2xl font-bold text-center">
-                {questionData.question}
+
+                {question?.question || "Waiting for question..."}
+
               </h2>
 
             </div>
 
 
-            {/* TIMER PROGRESS BAR */}
+            {/* TIMER */}
 
             <div className="w-full h-4 bg-gray-200 rounded-full mb-8 overflow-hidden">
 
@@ -79,11 +142,11 @@ export default function Quiz() {
             </div>
 
 
-            {/* ANSWER GRID */}
+            {/* ANSWERS */}
 
             <div className="grid grid-cols-2 gap-6">
 
-              {questionData.options.map((option,index)=>(
+              {question?.options?.map((option,index)=>(
 
                 <motion.div
                   key={index}
@@ -91,9 +154,10 @@ export default function Quiz() {
                   whileHover={{scale:1.05}}
                   whileTap={{scale:0.95}}
 
-                  onClick={()=>setSelected(option)}
+                  onClick={()=>sendAnswer(option)}
 
                   className={`
+
                   ${colors[index]}
                   text-white
                   text-xl
@@ -104,8 +168,9 @@ export default function Quiz() {
                   cursor-pointer
                   flex items-center gap-4
                   transition
+
                   ${selected===option ? "ring-4 ring-white scale-105":""}
-                  hover:shadow-[0_0_20px_rgba(0,0,0,0.2)]
+
                   `}
                 >
 
@@ -147,7 +212,7 @@ export default function Quiz() {
                       </span>
 
                       <span className="text-2xl">
-                        {player.avatar}
+                        🧑
                       </span>
 
                       <span className="font-semibold">
@@ -161,9 +226,6 @@ export default function Quiz() {
                     </span>
 
                   </div>
-
-
-                  {/* SCORE BAR */}
 
                   <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
 
@@ -188,5 +250,6 @@ export default function Quiz() {
       </div>
 
     </div>
+
   )
 }

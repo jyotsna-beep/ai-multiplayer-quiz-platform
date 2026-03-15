@@ -4,7 +4,7 @@ import Background from "../components/Background"
 import { useParams, useNavigate } from "react-router-dom"
 import { useEffect, useState, useRef } from "react"
 
-export default function Lobby() {
+export default function PlayerLobby() {
 
   const { roomCode } = useParams()
   const navigate = useNavigate()
@@ -60,27 +60,9 @@ export default function Lobby() {
 
     }
 
-    return () => {
-      ws.close()
-    }
+    return ()=>ws.close()
 
   },[roomCode])
-
-
-  const startQuiz = () => {
-
-    const ws = wsRef.current
-
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      alert("WebSocket connection is not open. Please refresh and try again.")
-      return
-    }
-
-    ws.send(JSON.stringify({
-      event:"start_quiz"
-    }))
-
-  }
 
 
   return (
@@ -138,12 +120,9 @@ export default function Lobby() {
           </div>
         )}
 
-        <button
-          onClick={startQuiz}
-          className="mt-12 bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white px-14 py-3 rounded-xl text-lg font-semibold shadow-lg hover:opacity-90"
-        >
-          Start Quiz
-        </button>
+        <p className="mt-12 text-gray-600 text-lg">
+          Waiting for the host to start the quiz...
+        </p>
 
       </div>
 

@@ -1,6 +1,6 @@
 export default function GameBackground() {
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
 
       <div className="absolute w-[500px] h-[500px] bg-gradient-to-r from-[#C1121F] to-[#F77F00] rounded-full blur-[140px] opacity-40 animate-blob top-[-150px] left-[-150px]"></div>
 

@@ -1,13 +1,116 @@
 import { motion } from "framer-motion"
 import Navbar from "../components/Navbar"
 import Background from "../components/Background"
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 export default function CreateRoom() {
 
+  const [hostName,setHostName] = useState("")
+  const [file,setFile] = useState(null)
+  const [questions,setQuestions] = useState(10)
+  const [difficulty,setDifficulty] = useState("Easy")
+  const [loading,setLoading] = useState(false)
+
+  const navigate = useNavigate()
+
+  const handleCreateRoom = async () => {
+
+    if(!hostName){
+      alert("Enter your name")
+      return
+    }
+
+    if(!file){
+      alert("Upload study material")
+      return
+    }
+
+    setLoading(true)
+
+    try{
+
+      // Create room
+      const roomResponse = await fetch("http://127.0.0.1:8000/create-room",{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({
+          host_name:hostName
+        })
+      })
+
+      const roomData = await roomResponse.json()
+      const roomCode = roomData.room_code
+
+      // Generate quiz
+      const formData = new FormData()
+
+      formData.append("file",file)
+      formData.append("questions",questions)
+      formData.append("difficulty",difficulty)
+      formData.append("room_code",roomCode)
+
+      const quizResponse = await fetch("http://127.0.0.1:8000/generate-quiz",{
+        method:"POST",
+        body:formData
+      })
+
+      const quizData = await quizResponse.json()
+
+      console.log("Generated Quiz:",quizData)
+
+      localStorage.setItem("playerName",hostName)
+
+      navigate(`/lobby/${roomCode}`)
+
+    }catch(err){
+
+      console.error(err)
+      alert("Error generating quiz")
+
+    }finally{
+
+      setLoading(false)
+
+    }
+
+  }
+
   return (
     <div className="min-h-screen bg-[#FFF6F3] relative">
+
       <Background />
       <Navbar />
+
+      {/* Loading Overlay */}
+
+      {loading && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+
+          <div className="bg-white p-10 rounded-xl shadow-xl text-center">
+
+            <motion.div
+              animate={{ y:[0,-10,0] }}
+              transition={{ repeat:Infinity, duration:1 }}
+              className="text-5xl mb-4"
+            >
+              🤖
+            </motion.div>
+
+            <h2 className="text-xl font-semibold mb-2">
+              Generating Quiz
+            </h2>
+
+            <p className="text-gray-500">
+              AI is creating questions from your study material...
+            </p>
+
+          </div>
+
+        </div>
+      )}
 
       <div className="flex justify-center items-center mt-16 px-6">
 
@@ -21,94 +124,62 @@ export default function CreateRoom() {
             Create Quiz Room
           </h2>
 
-          <p className="text-gray-500 mb-10">
+          <p className="text-gray-500 mb-6">
             Configure your quiz game
           </p>
 
+          {/* Host Name */}
 
-          {/* Upload */}
+          <input
+            type="text"
+            placeholder="Your Name"
+            value={hostName}
+            onChange={(e)=>setHostName(e.target.value)}
+            className="w-full border p-3 rounded-lg mb-6"
+          />
 
-          <div className="mb-8">
+          {/* File Upload */}
 
-            <p className="font-semibold mb-2">Study Material</p>
+          <input
+            type="file"
+            onChange={(e)=>setFile(e.target.files[0])}
+            className="w-full mb-6"
+          />
 
-            <label className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-xl h-32 cursor-pointer hover:border-orange-400 transition">
+          {/* Question Count */}
 
-              <span className="text-gray-500">
-                Upload PDF / PPT / DOC
-              </span>
+          <input
+            type="number"
+            value={questions}
+            onChange={(e)=>setQuestions(e.target.value)}
+            className="w-full border p-3 rounded-lg mb-6"
+            placeholder="Number of questions"
+          />
 
-              <input type="file" className="hidden"/>
+          {/* Difficulty */}
 
-            </label>
+          <select
+            value={difficulty}
+            onChange={(e)=>setDifficulty(e.target.value)}
+            className="w-full border p-3 rounded-lg mb-6"
+          >
+            <option>Easy</option>
+            <option>Medium</option>
+            <option>Hard</option>
+          </select>
 
-          </div>
+          {/* Button */}
 
-
-          {/* Grid Settings */}
-
-          <div className="grid grid-cols-2 gap-6 mb-8">
-
-            <div>
-
-              <p className="font-semibold mb-2">Questions</p>
-
-              <input
-                type="number"
-                placeholder="10"
-                className="w-full border p-3 rounded-lg"
-              />
-
-            </div>
-
-
-            <div>
-
-              <p className="font-semibold mb-2">Time / Question</p>
-
-              <input
-                type="number"
-                placeholder="20 sec"
-                className="w-full border p-3 rounded-lg"
-              />
-
-            </div>
-
-
-            <div>
-
-              <p className="font-semibold mb-2">Difficulty</p>
-
-              <select className="w-full border p-3 rounded-lg">
-
-                <option>Easy</option>
-                <option>Medium</option>
-                <option>Hard</option>
-
-              </select>
-
-            </div>
-
-
-            <div>
-
-              <p className="font-semibold mb-2">Max Players</p>
-
-              <input
-                type="number"
-                placeholder="10"
-                className="w-full border p-3 rounded-lg"
-              />
-
-            </div>
-
-          </div>
-
-
-          <button className="w-full bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white py-3 rounded-xl text-lg font-semibold hover:opacity-90 transition">
-
-            Generate Quiz
-
+          <button
+            disabled={loading}
+            onClick={handleCreateRoom}
+            className={`w-full py-3 rounded-xl text-lg font-semibold transition
+            ${loading
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white hover:opacity-90"
+            }`}
+          >
+            {loading ? "Generating..." : "Generate Quiz"}
           </button>
 
         </motion.div>

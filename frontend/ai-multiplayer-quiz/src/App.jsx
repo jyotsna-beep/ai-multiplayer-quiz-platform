@@ -6,8 +6,10 @@ import Signup from "./pages/Signup"
 import CreateRoom from "./pages/CreateRoom"
 import JoinRoom from "./pages/JoinRoom"
 import Lobby from "./pages/Lobby"
+import PlayerLobby from "./pages/PlayerLobby"
 import Quiz from "./pages/Quiz"
-import Result from "./pages/Result"
+import Winner from "./pages/Winner"
+import Profile from "./pages/Profile"
 
 function App() {
   return (
@@ -23,11 +25,14 @@ function App() {
 
       <Route path="/join-room" element={<JoinRoom />} />
 
-      <Route path="/lobby" element={<Lobby />} />
+      <Route path="/lobby/:roomCode" element={<Lobby />} />
 
-      <Route path="/quiz" element={<Quiz />} />
+      <Route path="/player-lobby/:roomCode" element={<PlayerLobby />} />
 
-      <Route path="/result" element={<Result />} />
+      <Route path="/quiz/:roomCode" element={<Quiz />} />
+
+      <Route path="/winner" element={<Winner />} />
+      <Route path="/profile" element={<Profile />} />
 
     </Routes>
   )
