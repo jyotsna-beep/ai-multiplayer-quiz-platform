@@ -3,10 +3,28 @@ import Background from "../components/Background"
 import { motion } from "framer-motion"
 import { Play, Users } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-
+import { useEffect, useState } from "react"
 
 export default function Dashboard() {
-const navigate = useNavigate()
+
+  const navigate = useNavigate()
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+
+    const token = localStorage.getItem("token")
+    const storedUser = localStorage.getItem("user")
+
+    // 🚫 If not logged in → redirect
+    if (!token || !storedUser) {
+      navigate("/")
+      return
+    }
+
+    setUser(JSON.parse(storedUser))
+
+  }, [])
+
   return (
     <div className="min-h-screen bg-white relative">
 
@@ -16,8 +34,9 @@ const navigate = useNavigate()
 
       <div className="flex flex-col items-center justify-center mt-28 px-6">
 
+        {/* Welcome */}
         <h2 className="text-5xl font-bold text-gray-800 mb-4 text-center">
-          Welcome to AI Quiz Arena
+          Welcome {user?.name || ""} 👋
         </h2>
 
         <p className="text-gray-500 text-lg mb-16 text-center max-w-xl">
@@ -28,7 +47,6 @@ const navigate = useNavigate()
         <div className="flex gap-10 flex-wrap justify-center">
 
           {/* Create Room */}
-
           <motion.div
             whileHover={{ scale: 1.07 }}
             onClick={() => navigate("/create-room")}
@@ -45,11 +63,9 @@ const navigate = useNavigate()
             <p className="text-sm text-gray-500 mt-1">
               Host a quiz game
             </p>
-
           </motion.div>
 
           {/* Join Room */}
-
           <motion.div
             whileHover={{ scale: 1.07 }}
             onClick={() => navigate("/join-room")}
@@ -66,7 +82,6 @@ const navigate = useNavigate()
             <p className="text-sm text-gray-500 mt-1">
               Enter a room code
             </p>
-
           </motion.div>
 
         </div>

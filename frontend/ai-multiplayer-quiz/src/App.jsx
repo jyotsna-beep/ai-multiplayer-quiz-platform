@@ -6,7 +6,7 @@ import Signup from "./pages/Signup"
 import CreateRoom from "./pages/CreateRoom"
 import JoinRoom from "./pages/JoinRoom"
 import Lobby from "./pages/Lobby"
-import PlayerLobby from "./pages/PlayerLobby"
+
 import Quiz from "./pages/Quiz"
 import Winner from "./pages/Winner"
 import Profile from "./pages/Profile"
@@ -27,7 +27,7 @@ function App() {
 
       <Route path="/lobby/:roomCode" element={<Lobby />} />
 
-      <Route path="/player-lobby/:roomCode" element={<PlayerLobby />} />
+
 
       <Route path="/quiz/:roomCode" element={<Quiz />} />
 

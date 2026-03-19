@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { motion } from "framer-motion"
 import Navbar from "../components/Navbar"
 import Background from "../components/Background"
@@ -7,9 +7,25 @@ import { useNavigate } from "react-router-dom"
 export default function JoinRoom() {
 
   const [code, setCode] = useState(["", "", "", "", "", ""])
-  const [playerName,setPlayerName] = useState("")
+  const [user, setUser] = useState(null)
+
   const inputs = useRef([])
   const navigate = useNavigate()
+
+  // ✅ Get logged-in user
+  useEffect(() => {
+
+    const storedUser = localStorage.getItem("user")
+    const token = localStorage.getItem("token")
+
+    if (!storedUser || !token) {
+      navigate("/")
+      return
+    }
+
+    setUser(JSON.parse(storedUser))
+
+  }, [])
 
   const handleChange = (value, index) => {
 
@@ -29,49 +45,48 @@ export default function JoinRoom() {
     if (e.key === "Backspace" && !code[index] && index > 0) {
       inputs.current[index - 1].focus()
     }
-
   }
 
   const handleJoinRoom = async () => {
 
-  const roomCode = code.join("")
+    const roomCode = code.join("")
 
-  if(!playerName){
-    alert("Enter your name")
-    return
+    if (roomCode.length !== 6) {
+      alert("Enter valid room code")
+      return
+    }
+
+    try {
+
+      const response = await fetch("http://127.0.0.1:8000/join-room", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          room_code: roomCode,
+          player_name: user.name
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || data.error) {
+        alert("Room not found")
+        return
+      }
+
+      // ✅ Save room
+      localStorage.setItem("room_code", roomCode)
+
+      // ✅ Navigate to same lobby page
+      navigate(`/lobby/${roomCode}`)
+
+    } catch (err) {
+      console.error(err)
+      alert("Failed to join room")
+    }
   }
-
-  if(roomCode.length !== 6){
-    alert("Enter valid room code")
-    return
-  }
-
-  console.log("Join room", { roomCode, playerName })
-
-  const response = await fetch("http://127.0.0.1:8000/join-room",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      room_code:roomCode,
-      player_name:playerName
-    })
-  })
-
-  const data = await response.json()
-
-  console.log("Join response", data)
-
-  if(data.error){
-    alert("Room not found")
-    return
-  }
-
-  localStorage.setItem("playerName",playerName)
-
-  navigate(`/player-lobby/${roomCode}`)
-}
 
   return (
     <div className="min-h-screen bg-[#FFF6F3] relative">
@@ -82,8 +97,8 @@ export default function JoinRoom() {
       <div className="flex items-center justify-center mt-32">
 
         <motion.div
-          initial={{ opacity:0, y:30 }}
-          animate={{ opacity:1, y:0 }}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
           className="glow-card w-[720px]"
         >
 
@@ -91,22 +106,16 @@ export default function JoinRoom() {
             Join Game
           </h2>
 
-          <p className="text-gray-500 mb-6">
+          <p className="text-gray-500 mb-4">
             Enter the room code
           </p>
 
-          {/* Player Name */}
-
-          <input
-            type="text"
-            placeholder="Your Name"
-            value={playerName}
-            onChange={(e)=>setPlayerName(e.target.value)}
-            className="w-full border p-3 rounded-lg mb-8"
-          />
+          {/* Show logged-in user */}
+          <p className="mb-6 text-gray-700">
+            Player: <b>{user?.name}</b>
+          </p>
 
           {/* Code Boxes */}
-
           <div className="flex justify-center gap-3 mb-8">
 
             {code.map((digit, index) => (

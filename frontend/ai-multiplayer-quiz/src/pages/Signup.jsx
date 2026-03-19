@@ -7,39 +7,39 @@ import GameBackground from "../components/GameBackground"
 
 export default function Signup() {
 
-  const [showPassword,setShowPassword] = useState(false)
-  const [showConfirm,setShowConfirm] = useState(false)
-  const [loading,setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const [name,setName] = useState("")
-  const [email,setEmail] = useState("")
-  const [password,setPassword] = useState("")
-  const [confirmPassword,setConfirmPassword] = useState("")
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
 
   const navigate = useNavigate()
 
   const handleSignup = async () => {
 
-    if(!name || !email || !password || !confirmPassword){
+    if (!name || !email || !password || !confirmPassword) {
       alert("Please fill all fields")
       return
     }
 
-    if(password !== confirmPassword){
+    if (password !== confirmPassword) {
       alert("Passwords do not match")
       return
     }
 
     setLoading(true)
 
-    try{
+    try {
 
-      const response = await fetch("http://127.0.0.1:8000/signup",{
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json"
+      const response = await fetch("http://127.0.0.1:8000/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
         },
-        body:JSON.stringify({
+        body: JSON.stringify({
           name,
           email,
           password
@@ -48,22 +48,23 @@ export default function Signup() {
 
       const data = await response.json()
 
-      if(!response.ok){
-        alert(data.detail)
+      if (!response.ok) {
+        alert(data.detail || "Signup failed")
         setLoading(false)
         return
       }
 
       alert("Account created successfully!")
 
+      // ✅ Optional: auto redirect to login
       navigate("/")
 
-    }catch(err){
+    } catch (err) {
+      console.error(err)
       alert("Signup failed")
     }
 
     setLoading(false)
-
   }
 
   return (
@@ -72,8 +73,8 @@ export default function Signup() {
       <GameBackground />
 
       <motion.div
-        initial={{ opacity:0, y:40 }}
-        animate={{ opacity:1, y:0 }}
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
         className="w-[400px] bg-white shadow-2xl rounded-2xl p-8 relative z-20"
       >
 
@@ -85,126 +86,97 @@ export default function Signup() {
           Sign up to start playing quizzes
         </p>
 
-
         {/* Name */}
-
         <input
           type="text"
           placeholder="Full Name"
           value={name}
-          onChange={(e)=>setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           className="w-full border p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
         />
 
-
         {/* Email */}
-
         <input
           type="email"
           placeholder="Email"
           value={email}
-          onChange={(e)=>setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full border p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
-          autoFocus
         />
 
-
         {/* Password */}
-
         <div className="relative mb-4">
 
           <input
             type={showPassword ? "text" : "password"}
             placeholder="Password"
             value={password}
-            onChange={(e)=>setPassword(e.target.value)}
+            onChange={(e) => setPassword(e.target.value)}
             className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
 
-          <div
-            onClick={()=>setShowPassword(!showPassword)}
-            className="absolute right-3 top-3 cursor-pointer text-gray-500"
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-3 text-gray-500"
           >
-            {showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
-          </div>
+            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
 
         </div>
 
-
         {/* Confirm Password */}
-
         <div className="relative mb-6">
 
           <input
             type={showConfirm ? "text" : "password"}
             placeholder="Confirm Password"
             value={confirmPassword}
-            onChange={(e)=>setConfirmPassword(e.target.value)}
+            onChange={(e) => setConfirmPassword(e.target.value)}
             className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
 
-          <div
-            onClick={()=>setShowConfirm(!showConfirm)}
-            className="absolute right-3 top-3 cursor-pointer text-gray-500"
+          <button
+            type="button"
+            onClick={() => setShowConfirm(!showConfirm)}
+            className="absolute right-3 top-3 text-gray-500"
           >
-            {showConfirm ? <EyeOff size={20}/> : <Eye size={20}/>}
-          </div>
+            {showConfirm ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
 
         </div>
 
-
         {/* Signup Button */}
-
         <button
           onClick={handleSignup}
-          className="w-full bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition flex justify-center items-center"
+          disabled={loading}
+          className="w-full bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-60"
         >
           {loading ? "Creating Account..." : "Sign Up"}
         </button>
 
-
         {/* Divider */}
-
         <div className="flex items-center my-6">
-
           <div className="flex-grow border-t"></div>
-
-          <span className="mx-3 text-gray-400 text-sm">
-            OR
-          </span>
-
+          <span className="mx-3 text-gray-400 text-sm">OR</span>
           <div className="flex-grow border-t"></div>
-
         </div>
 
-
         {/* Google Signup */}
-
         <button className="w-full border flex items-center justify-center gap-3 py-3 rounded-lg hover:bg-gray-50 transition">
-
           <img
             src="https://www.svgrepo.com/show/475656/google-color.svg"
             className="w-5"
           />
-
           Continue with Google
-
         </button>
 
-
         {/* Login Link */}
-
         <p className="text-center text-gray-500 mt-6 text-sm">
-
           Already have an account?{" "}
-
-          <Link
-            to="/"
-            className="text-[#C1121F] font-semibold"
-          >
+          <Link to="/" className="text-[#C1121F] font-semibold">
             Login
           </Link>
-
         </p>
 
       </motion.div>
