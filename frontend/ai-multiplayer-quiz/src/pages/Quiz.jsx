@@ -11,6 +11,7 @@ export default function Quiz() {
 
   const wsRef = useRef(null)
   const startTimeRef = useRef(null)
+  const timerRef = useRef(null)
 
   const [question, setQuestion] = useState(null)
   const [players, setPlayers] = useState([])
@@ -20,7 +21,7 @@ export default function Quiz() {
 
   useEffect(() => {
 
-    const token = localStorage.getItem("token")
+    const token = sessionStorage.getItem("token")
 
     if (!token) {
       navigate("/")
@@ -43,17 +44,25 @@ export default function Quiz() {
         setQuestion(data.question)
         setSelected(null)
 
-        // ✅ backend timer
-        setTotalTime(data.time_per_question)
-        setTimeLeft(data.time_per_question)
+        const t = data.timer || 10
 
-        // ✅ track answer time
+        setTotalTime(t)
+        setTimeLeft(t)
+
         startTimeRef.current = Date.now()
-      }
 
-      // ⏱ TIMER UPDATE
-      if (data.type === "timer") {
-        setTimeLeft(data.time_left)
+        // 🔥 LOCAL TIMER (IMPORTANT FIX)
+        clearInterval(timerRef.current)
+
+        timerRef.current = setInterval(() => {
+          setTimeLeft(prev => {
+            if (prev <= 1) {
+              clearInterval(timerRef.current)
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
       }
 
       // 🏆 LEADERBOARD
@@ -69,13 +78,16 @@ export default function Quiz() {
       }
     }
 
-    return () => ws.close()
+    return () => {
+      ws.close()
+      clearInterval(timerRef.current)
+    }
 
   }, [roomCode])
 
   const sendAnswer = (option) => {
 
-    if (selected) return // prevent double click
+    if (selected || timeLeft === 0) return
 
     setSelected(option)
 
@@ -110,7 +122,7 @@ export default function Quiz() {
 
         <div className="flex gap-10 w-[1200px]">
 
-          {/* QUESTION AREA */}
+          {/* QUESTION */}
           <div className="flex-1">
 
             <div className="glow-card mb-6">
@@ -124,49 +136,62 @@ export default function Quiz() {
 
               <motion.div
                 animate={{ width: `${progress}%` }}
-                transition={{ ease: "linear" }}
+                transition={{ ease: "linear", duration: 1 }}
                 className={`h-full ${timeLeft <= 5 ? "bg-red-500" : "bg-green-500"}`}
               />
 
             </div>
 
-            {/* ANSWERS */}
-            <div className="grid grid-cols-2 gap-6">
+            {/* OPTIONS */}
+<div className="grid grid-cols-2 gap-6">
 
-              {question?.options?.map((option, index) => (
+  {question?.options?.map((option, index) => {
 
-                <motion.div
-                  key={index}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => sendAnswer(option)}
+    const isSelected = selected === option
+    const isDisabled = selected !== null
 
-                  className={`
-                    ${colors[index]}
-                    text-white
-                    text-xl
-                    font-semibold
-                    p-8
-                    rounded-2xl
-                    shadow-xl
-                    cursor-pointer
-                    flex items-center gap-4
-                    transition
-                    ${selected === option ? "ring-4 ring-white scale-105" : ""}
-                  `}
-                >
+    return (
+      <motion.div
+        key={index}
+        whileHover={!isDisabled ? { scale: 1.05 } : {}}
+        whileTap={!isDisabled ? { scale: 0.95 } : {}}
+        onClick={() => sendAnswer(option)}
 
-                  <span className="text-3xl">
-                    {icons[index]}
-                  </span>
+        className={`
+          ${colors[index]}
+          text-white
+          text-xl
+          font-semibold
+          p-8
+          rounded-2xl
+          shadow-xl
+          flex items-center gap-4
+          transition-all duration-200
 
-                  {option}
+          ${isDisabled ? "cursor-not-allowed" : "cursor-pointer"}
 
-                </motion.div>
+          ${isSelected
+            ? "ring-4 ring-white scale-105 brightness-110"
+            : isDisabled
+              ? "opacity-50"
+              : ""
+          }
 
-              ))}
+          ${timeLeft === 0 ? "opacity-50 cursor-not-allowed" : ""}
+        `}
+      >
 
-            </div>
+        <span className="text-3xl">
+          {icons[index]}
+        </span>
+
+        {option}
+
+      </motion.div>
+    )
+  })}
+
+</div>
 
           </div>
 
@@ -202,16 +227,6 @@ export default function Quiz() {
                     <span className="font-bold">
                       {player.score}
                     </span>
-
-                  </div>
-
-                  <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${player.score / 5}%` }}
-                      className="bg-gradient-to-r from-[#C1121F] to-[#F77F00] h-2 rounded-full"
-                    />
 
                   </div>
 

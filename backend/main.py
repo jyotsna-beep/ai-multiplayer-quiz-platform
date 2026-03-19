@@ -32,14 +32,27 @@ connections = {}
 answered_players = {}
 
 # -------------------------
-# HELPERS
+# SAFE BROADCAST (FIXED)
 # -------------------------
 async def broadcast(room_code, message):
-    if room_code in connections:
-        for ws in connections[room_code].values():
+    if room_code not in connections:
+        return
+
+    dead = []
+
+    for player, ws in connections[room_code].items():
+        try:
             await ws.send_json(message)
+        except:
+            dead.append(player)
+
+    for d in dead:
+        connections[room_code].pop(d, None)
 
 
+# -------------------------
+# SCORING SYSTEM
+# -------------------------
 def calculate_score(correct, time_taken, is_fastest, streak):
     if not correct:
         return -20
@@ -48,9 +61,9 @@ def calculate_score(correct, time_taken, is_fastest, streak):
 
     bonus = 0
     if is_fastest:
-        bonus += 20
+        bonus += 30   # boosted
     if streak >= 3:
-        bonus += 10
+        bonus += 20
 
     return base + bonus
 
@@ -131,6 +144,14 @@ async def generate_quiz(
 
         quiz = generate_questions(text, questions, difficulty)
 
+        if not quiz:
+            # fallback
+            quiz = [{
+                "question": "Sample Question?",
+                "options": ["A", "B", "C", "D"],
+                "answer": "A"
+            } for _ in range(questions)]
+
         rooms_collection.update_one(
             {"room_code": room_code},
             {"$set": {
@@ -151,7 +172,7 @@ async def generate_quiz(
 
 
 # -------------------------
-# QUIZ TIMER ENGINE
+# QUIZ ENGINE (FIXED)
 # -------------------------
 async def run_quiz(room_code):
 
@@ -159,7 +180,7 @@ async def run_quiz(room_code):
     if not room:
         return
 
-    questions = room["questions"]
+    questions = room.get("questions", [])
     time_per_q = room.get("settings", {}).get("time_per_question", 10)
 
     answered_players[room_code] = {}
@@ -181,23 +202,22 @@ async def run_quiz(room_code):
 
         await asyncio.sleep(time_per_q)
 
-        # handle no answer
-        for player in room["players"]:
-            if player not in answered_players[room_code][i]:
-                room["scores"][player] += 0
-
+    # GAME OVER
     leaderboard = sorted(
         [{"name": p, "score": s} for p, s in room["scores"].items()],
         key=lambda x: x["score"], reverse=True
     )
 
-    # save history
     history_collection.insert_one({
         "room_code": room_code,
         "players": room["scores"],
         "total_questions": len(questions),
         "created_at": datetime.utcnow()
     })
+    rooms_collection.update_one(
+    {"room_code": room_code},
+    {"$set": {"scores": room["scores"]}}
+)
 
     await broadcast(room_code, {
         "type": "game_over",
@@ -206,10 +226,12 @@ async def run_quiz(room_code):
 
 
 # -------------------------
-# WEBSOCKET (SECURED)
+# WEBSOCKET
 # -------------------------
 @app.websocket("/ws/{room_code}")
 async def websocket_endpoint(websocket: WebSocket, room_code: str):
+
+    await websocket.accept()   # MUST be first
 
     token = websocket.query_params.get("token")
     user = verify_token(token)
@@ -217,10 +239,8 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
     if not user:
         await websocket.close()
         return
-
     player_name = user["name"]
 
-    await websocket.accept()
 
     room = get_room(room_code)
     if not room:
@@ -232,7 +252,8 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
 
     await broadcast(room_code, {
         "type": "players",
-        "players": list(connections[room_code].keys())
+        "players": list(connections[room_code].keys()),
+        "host": room["host"]
     })
 
     try:
@@ -240,17 +261,31 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
             data = await websocket.receive_json()
             event = data.get("event")
 
+            # -------------------------
+            # START QUIZ
+            # -------------------------
             if event == "start_quiz":
 
                 if player_name != room["host"]:
                     continue
 
                 room["scores"] = {p: 0 for p in room["players"]}
+                room["streak"] = {}
+                room["first_correct"] = {}
+
                 asyncio.create_task(run_quiz(room_code))
 
-            elif event == "answer":
+            # -------------------------
+            # ANSWER
+            # -------------------------
 
-                q_index = room["current_question"]
+            elif event == "answer":
+                room = get_room(room_code)
+
+                q_index = room.get("current_question", 0)
+
+                if room_code not in answered_players:
+                    continue
 
                 if player_name in answered_players[room_code].get(q_index, set()):
                     continue
@@ -263,89 +298,73 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
                 question = room["questions"][q_index]
                 correct_answer = question["answer"]
 
+                # ✅ SAFE INIT (IMPORTANT)
+                room.setdefault("first_correct", {})
+                room.setdefault("streak", {})
+                room.setdefault("scores", {})
+
                 is_first = False
                 if q_index not in room["first_correct"]:
                     if answer == correct_answer:
                         room["first_correct"][q_index] = player_name
                         is_first = True
 
-                # streak update
+    # streak logic
                 if answer == correct_answer:
                     room["streak"][player_name] = room["streak"].get(player_name, 0) + 1
                 else:
                     room["streak"][player_name] = 0
 
                 score = calculate_score(
-                    correct=(answer == correct_answer),
-                    time_taken=time_taken,
-                    is_fastest=is_first,
-                    streak=room["streak"].get(player_name, 0)
-                )
+        correct=(answer == correct_answer),
+        time_taken=time_taken,
+        is_fastest=is_first,
+        streak=room["streak"].get(player_name, 0)
+    )
+
+                # ensure scores exist
+                room.setdefault("scores", {})
+
+# ensure player exists
+                if player_name not in room["scores"]:
+                    room["scores"][player_name] = 0
 
                 room["scores"][player_name] += score
+                rooms_collection.update_one(
+                {"room_code": room_code},
+                {"$set": {"scores": room["scores"]}}
+)
 
                 leaderboard = sorted(
-                    [{"name": p, "score": s} for p, s in room["scores"].items()],
-                    key=lambda x: x["score"], reverse=True
-                )
+        [{"name": p, "score": s} for p, s in room["scores"].items()],
+        key=lambda x: x["score"], reverse=True
+    )
 
                 await broadcast(room_code, {
-                    "type": "leaderboard",
-                    "scores": leaderboard
-                })
-
-            elif event == "end_quiz":
-
-                if player_name != room["host"]:
-                    continue
-
-                leaderboard = sorted(
-                    [{"name": p, "score": s} for p, s in room["scores"].items()],
-                    key=lambda x: x["score"], reverse=True
-                )
-
-                await broadcast(room_code, {
-                    "type": "game_over",
-                    "scores": leaderboard
-                })
+        "type": "leaderboard",
+        "scores": leaderboard
+    })
 
     except WebSocketDisconnect:
-        connections[room_code].pop(player_name, None)
+        connections.get(room_code, {}).pop(player_name, None)
 
         await broadcast(room_code, {
             "type": "players",
-            "players": list(connections.get(room_code, {}).keys())
+            "players": list(connections.get(room_code, {}).keys()),
+
+            "host": room["host"]
         })
-
-
 # -------------------------
-# HISTORY API
+# AUTH APIs (RESTORED)
 # -------------------------
-@app.get("/history/{user_name}")
-def get_history(user_name: str):
 
-    history = list(history_collection.find())
-
-    result = []
-    for h in history:
-        if user_name in h["players"]:
-            result.append({
-                "room_code": h["room_code"],
-                "score": h["players"][user_name],
-                "date": h["created_at"]
-            })
-
-    return result
-
-
-# -------------------------
-# AUTH
-# -------------------------
 @app.post("/signup")
 def signup(data: SignupRequest = Body(...)):
 
-    if users_collection.find_one({"email": data.email}):
-        raise HTTPException(status_code=400, detail="User exists")
+    existing = users_collection.find_one({"email": data.email})
+
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
 
     hashed = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt())
 
@@ -355,7 +374,7 @@ def signup(data: SignupRequest = Body(...)):
         "password": hashed.decode()
     })
 
-    return {"message": "User created"}
+    return {"message": "User created successfully"}
 
 
 @app.post("/login")
@@ -363,8 +382,11 @@ def login(data: LoginRequest = Body(...)):
 
     user = users_collection.find_one({"email": data.email})
 
-    if not user or not bcrypt.checkpw(data.password.encode(), user["password"].encode()):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    if not bcrypt.checkpw(data.password.encode(), user["password"].encode()):
+        raise HTTPException(status_code=400, detail="Invalid password")
 
     token = create_token({
         "email": user["email"],
@@ -373,5 +395,6 @@ def login(data: LoginRequest = Body(...)):
 
     return {
         "token": token,
-        "name": user["name"]
+        "name": user["name"],
+        "email": user["email"]
     }

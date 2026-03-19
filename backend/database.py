@@ -1,6 +1,9 @@
 from pymongo import MongoClient
 
-MONGO_URL ="mongodb+srv://joshmallena_db_user:2tEmwvdmRLo2sOxx@quiz-cluster.kk8gxef.mongodb.net/?appName=quiz-cluster"
+from dotenv import load_dotenv
+import os
+load_dotenv()
+MONGO_URL =os.getenv("MONGO_URI")
 
 client = MongoClient(MONGO_URL)
 

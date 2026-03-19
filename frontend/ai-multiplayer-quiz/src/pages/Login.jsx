@@ -46,10 +46,10 @@ export default function Login() {
       }
 
       // ✅ STORE TOKEN (IMPORTANT FOR WEBSOCKET)
-      localStorage.setItem("token", data.token)
+      sessionStorage.setItem("token", data.token)
 
       // ✅ STORE USER CLEANLY
-      localStorage.setItem("user", JSON.stringify({
+      sessionStorage.setItem("user", JSON.stringify({
         name: data.name
       }))
 

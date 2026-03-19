@@ -12,8 +12,8 @@ export default function Dashboard() {
 
   useEffect(() => {
 
-    const token = localStorage.getItem("token")
-    const storedUser = localStorage.getItem("user")
+    const token = sessionStorage.getItem("token")
+    const storedUser = sessionStorage.getItem("user")
 
     // 🚫 If not logged in → redirect
     if (!token || !storedUser) {

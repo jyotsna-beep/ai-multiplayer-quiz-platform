@@ -18,8 +18,8 @@ export default function CreateRoom() {
 
   // ✅ Get logged-in user
   useEffect(() => {
-    const storedUser = localStorage.getItem("user")
-    const token = localStorage.getItem("token")
+    const storedUser = sessionStorage.getItem("user")
+    const token = sessionStorage.getItem("token")
 
     if (!storedUser || !token) {
       navigate("/")
@@ -85,7 +85,7 @@ export default function CreateRoom() {
       console.log("Generated Quiz:", quizData)
 
       // ✅ Save room info
-      localStorage.setItem("room_code", roomCode)
+      sessionStorage.setItem("room_code", roomCode)
 
       // ✅ Go to lobby
       navigate(`/lobby/${roomCode}`)

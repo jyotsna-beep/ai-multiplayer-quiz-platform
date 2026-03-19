@@ -7,25 +7,21 @@ import { useNavigate } from "react-router-dom"
 export default function JoinRoom() {
 
   const [code, setCode] = useState(["", "", "", "", "", ""])
-  const [user, setUser] = useState(null)
 
   const inputs = useRef([])
   const navigate = useNavigate()
 
   // ✅ Get logged-in user
+  const user = JSON.parse(sessionStorage.getItem("user"))
+
+  // ✅ Auth check
   useEffect(() => {
+    const token = sessionStorage.getItem("token")
 
-    const storedUser = localStorage.getItem("user")
-    const token = localStorage.getItem("token")
-
-    if (!storedUser || !token) {
+    if (!user || !token) {
       navigate("/")
-      return
     }
-
-    setUser(JSON.parse(storedUser))
-
-  }, [])
+  }, [navigate, user])
 
   const handleChange = (value, index) => {
 
@@ -65,7 +61,7 @@ export default function JoinRoom() {
         },
         body: JSON.stringify({
           room_code: roomCode,
-          player_name: user.name
+          player_name: user.name   // ✅ from JWT user
         })
       })
 
@@ -77,9 +73,9 @@ export default function JoinRoom() {
       }
 
       // ✅ Save room
-      localStorage.setItem("room_code", roomCode)
+      sessionStorage.setItem("room_code", roomCode)
 
-      // ✅ Navigate to same lobby page
+      // ✅ Navigate to lobby
       navigate(`/lobby/${roomCode}`)
 
     } catch (err) {
@@ -110,12 +106,12 @@ export default function JoinRoom() {
             Enter the room code
           </p>
 
-          {/* Show logged-in user */}
+          {/* 👤 Logged-in user */}
           <p className="mb-6 text-gray-700">
             Player: <b>{user?.name}</b>
           </p>
 
-          {/* Code Boxes */}
+          {/* 🔢 Code Boxes */}
           <div className="flex justify-center gap-3 mb-8">
 
             {code.map((digit, index) => (
@@ -141,6 +137,7 @@ export default function JoinRoom() {
 
           </div>
 
+          {/* 🚀 Join Button */}
           <button
             onClick={handleJoinRoom}
             className="w-full bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white py-3 rounded-xl text-lg font-semibold hover:opacity-90 transition"

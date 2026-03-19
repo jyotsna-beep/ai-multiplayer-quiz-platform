@@ -17,16 +17,16 @@ export default function Lobby() {
 
   useEffect(() => {
 
-    const token = localStorage.getItem("token")
-    const user = JSON.parse(localStorage.getItem("user"))
+    const token = sessionStorage.getItem("token")
+    const user = JSON.parse(sessionStorage.getItem("user"))
 
     if (!token || !user) {
       navigate("/")
       return
     }
 
-    // ✅ WebSocket with JWT
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws"
+
     const ws = new WebSocket(
       `${wsProtocol}://127.0.0.1:8000/ws/${roomCode}?token=${token}`
     )
@@ -42,33 +42,37 @@ export default function Lobby() {
     }
 
     ws.onclose = () => {
-      setConnectionError((prev) => prev || "Connection closed")
+      setConnectionError(prev => prev || "Connection closed")
     }
 
     ws.onmessage = (event) => {
 
       const data = JSON.parse(event.data)
 
-      // 👥 Players update
+      // 👥 Players update + Host detection (FIXED)
       if (data.type === "players") {
+
         setPlayers(data.players)
 
-        // ✅ Check host
-        if (data.players[0] === user.name) {
+        if (data.host === user.name) {
           setIsHost(true)
+        } else {
+          setIsHost(false)
         }
       }
 
-      // 🚀 New quiz start → first question arrives
+      // 🚀 Quiz start
       if (data.type === "question") {
         navigate(`/quiz/${roomCode}`)
       }
 
     }
 
-    return () => ws.close()
+    return () => {
+      ws.close()
+    }
 
-  }, [roomCode])
+  }, [roomCode, navigate])
 
   const startQuiz = () => {
 
@@ -92,6 +96,7 @@ export default function Lobby() {
 
       <div className="flex flex-col items-center mt-16 px-6">
 
+        {/* Room Code */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -108,31 +113,45 @@ export default function Lobby() {
         <div className="grid grid-cols-3 gap-6 max-w-[700px]">
 
           {players.map((player, index) => (
+
             <motion.div
               key={index}
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: index * 0.1 }}
-              className="bg-white rounded-xl shadow-lg p-4 text-center"
+              className="bg-white rounded-xl shadow-lg p-4 text-center relative"
             >
+
               <div className="text-4xl mb-2">🧑</div>
+
               <p className="font-semibold">{player}</p>
+
+              {/* 👑 Host badge */}
+              {isHost && player === JSON.parse(sessionStorage.getItem("user"))?.name && (
+                <span className="absolute top-2 right-2 text-xs bg-yellow-400 px-2 py-1 rounded">
+                  HOST
+                </span>
+              )}
+
             </motion.div>
+
           ))}
 
         </div>
 
+        {/* Error */}
         {connectionError && (
           <div className="mt-6 p-4 bg-red-50 border text-red-700 rounded-lg">
             {connectionError}
           </div>
         )}
 
-        {/* Host Controls */}
+        {/* Controls */}
         {isHost ? (
           <button
             onClick={startQuiz}
-            className="mt-12 bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white px-14 py-3 rounded-xl text-lg font-semibold"
+            disabled={players.length < 1}
+            className="mt-12 bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white px-14 py-3 rounded-xl text-lg font-semibold hover:opacity-90"
           >
             Start Quiz
           </button>
