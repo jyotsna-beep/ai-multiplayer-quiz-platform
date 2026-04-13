@@ -40,8 +40,10 @@ export default function CreateRoom() {
 
     try {
 
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000"
+
       // ✅ Create room using logged-in user
-      const roomResponse = await fetch("http://127.0.0.1:8000/create-room", {
+      const roomResponse = await fetch(`${apiUrl}/create-room`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -69,7 +71,7 @@ export default function CreateRoom() {
       formData.append("room_code", roomCode)
       formData.append("time_per_question", timePerQuestion)
 
-      const quizResponse = await fetch("http://127.0.0.1:8000/generate-quiz", {
+      const quizResponse = await fetch(`${apiUrl}/generate-quiz`, {
         method: "POST",
         body: formData
       })

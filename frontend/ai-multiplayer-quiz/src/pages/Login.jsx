@@ -26,7 +26,8 @@ export default function Login() {
 
     try {
 
-      const response = await fetch("http://127.0.0.1:8000/login", {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -47,10 +48,14 @@ export default function Login() {
 
       // ✅ STORE TOKEN (IMPORTANT FOR WEBSOCKET)
       sessionStorage.setItem("token", data.token)
+      
+      // ✅ ALSO STORE IN LOCALSTORAGE FOR PERSISTENCE
+      localStorage.setItem("token", data.token)
 
       // ✅ STORE USER CLEANLY
       sessionStorage.setItem("user", JSON.stringify({
-        name: data.name
+        name: data.name,
+        email: data.email
       }))
 
       // ✅ NAVIGATE

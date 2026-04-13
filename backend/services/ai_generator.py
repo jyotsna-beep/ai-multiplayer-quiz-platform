@@ -41,13 +41,15 @@ def generate_questions(text, num_questions, difficulty):
     # FALLBACK (NO API KEY)
     # -------------------------
     if not client:
-        return [
-            {
-                "question": "Sample question: What is 2 + 2?",
-                "options": ["1", "2", "3", "4"],
-                "answer": "4"
-            }
-        ]
+        print(f"⚠️  No Groq API key found. Returning {num_questions} fallback questions.")
+        fallback_questions = []
+        for i in range(num_questions):
+            fallback_questions.append({
+                "question": f"Sample question {i+1}: What is 2 + {i}?",
+                "options": [str(2+i), str(3+i), str(4+i), str(5+i)],
+                "answer": str(2+i)
+            })
+        return fallback_questions
 
     try:
         completion = client.chat.completions.create(
@@ -98,10 +100,11 @@ def generate_questions(text, num_questions, difficulty):
         # -------------------------
         # FALLBACK SAFE OUTPUT
         # -------------------------
-        return [
-            {
-                "question": "Fallback question: What is 2 + 2?",
-                "options": ["1", "2", "3", "4"],
-                "answer": "4"
-            }
-        ]
+        fallback_questions = []
+        for i in range(num_questions):
+            fallback_questions.append({
+                "question": f"Fallback question {i+1}: What is 2 + {i}?",
+                "options": [str(2+i), str(3+i), str(4+i), str(5+i)],
+                "answer": str(2+i)
+            })
+        return fallback_questions
