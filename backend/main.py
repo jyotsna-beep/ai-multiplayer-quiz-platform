@@ -2,7 +2,7 @@ import io
 import asyncio
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, Body, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, Body, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 import pdfplumber
@@ -138,14 +138,15 @@ def get_room_api(room_code: str):
 @app.post("/generate-quiz")
 async def generate_quiz(
     room_code: str = Form(...),
-    file: bytes = File(...),
+    file: UploadFile = File(...),
     questions: int = Form(...),
     difficulty: str = Form(...),
     time_per_question: int = Form(10)
 ):
     try:
+        file_bytes = await file.read()
         text = ""
-        with pdfplumber.open(io.BytesIO(file)) as pdf:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             for page in pdf.pages:
                 text += page.extract_text() or ""
 
@@ -197,38 +198,38 @@ async def generate_quiz(
 # -------------------------
 # QUIZ ENGINE (FIXED)
 # -------------------------
+# Global state for active quizzes
+active_quizzes = {}
+
 async def run_quiz(room_code):
-
     room = get_room(room_code)
-    if not room:
-        print(f"❌ Room {room_code} not found")
-        return
-
-    questions = room.get("questions", [])
+    if not room: return
     
-    if not questions or len(questions) == 0:
-        print(f"❌ No questions found for room {room_code}. Cannot start quiz.")
-        await broadcast(room_code, {
-            "type": "error",
-            "message": "No questions were generated. Please try again."
-        })
+    questions = room.get("questions", [])
+    if not questions:
+        await broadcast(room_code, {"type": "error", "message": "No questions found."})
         return
     
     time_per_q = room.get("settings", {}).get("time_per_question", 10)
+    
+    # Reset/Initialize room data
+    active_quizzes[room_code] = {
+        "current_question": 0,
+        "first_correct": {},
+        "streaks": {p: 0 for p in room.get("players", [])},
+        "answered": {}
+    }
 
-    print(f"🎮 Starting quiz in room {room_code} with {len(questions)} questions")
-
-    answered_players[room_code] = {}
-    room["streak"] = {}
-    room["first_correct"] = {}
+    # Initialize scores in DB if not present
+    rooms_collection.update_one(
+        {"room_code": room_code},
+        {"$set": {"scores": {p: 0 for p in room.get("players", [])}, "status": "playing"}}
+    )
 
     for i, q in enumerate(questions):
-
-        room["current_question"] = i
-        answered_players[room_code][i] = set()
-
-        print(f"📝 Question {i+1}/{len(questions)}: {q.get('question', 'Unknown')[:50]}...")
-
+        active_quizzes[room_code]["current_question"] = i
+        active_quizzes[room_code]["answered"][i] = set()
+        
         await broadcast(room_code, {
             "type": "question",
             "question": q,
@@ -239,61 +240,48 @@ async def run_quiz(room_code):
 
         await asyncio.sleep(time_per_q)
 
-    # GAME OVER
+    # FINAL RE-FETCH FOR ACCURATE SCORES
+    final_room = get_room(room_code)
+    final_scores = final_room.get("scores", {})
     leaderboard = sorted(
-        [{"name": p, "score": s} for p, s in room.get("scores", {}).items()],
+        [{"name": p, "score": s} for p, s in final_scores.items()],
         key=lambda x: x["score"], reverse=True
     )
 
-    print(f"🏆 Quiz completed in room {room_code}. Leaderboard: {leaderboard}")
-
-    # Save to database with complete info
+    # Save to History
     history_collection.insert_one({
         "room_code": room_code,
-        "players": room.get("scores", {}),
+        "questions": questions,
+        "players": final_scores,
         "leaderboard": leaderboard,
         "total_questions": len(questions),
-        "difficulty": room.get("settings", {}).get("difficulty", "medium"),
-        "time_per_question": room.get("settings", {}).get("time_per_question", 10),
+        "difficulty": final_room.get("settings", {}).get("difficulty", "medium"),
+        "time_per_question": time_per_q,
         "created_at": datetime.utcnow()
     })
 
-    # Update room with final scores
+    # Mark room as completed
     rooms_collection.update_one(
         {"room_code": room_code},
-        {"$set": {
-            "scores": room.get("scores", {}),
-            "completed_at": datetime.utcnow(),
-            "status": "completed"
-        }}
+        {"$set": {"status": "completed", "completed_at": datetime.utcnow()}}
     )
 
-    # Notify all players game is over
     await broadcast(room_code, {
         "type": "game_over",
         "scores": leaderboard
     })
     
-    # Cleanup
-    answered_players.pop(room_code, None)
+    active_quizzes.pop(room_code, None)
 
-
-# -------------------------
-# WEBSOCKET
-# -------------------------
 @app.websocket("/ws/{room_code}")
-async def websocket_endpoint(websocket: WebSocket, room_code: str):
-
-    await websocket.accept()   # MUST be first
-
-    token = websocket.query_params.get("token")
+async def quiz_websocket(websocket: WebSocket, room_code: str, token: str):
     user = verify_token(token)
-
     if not user:
-        await websocket.close()
+        await websocket.close(code=4001)
         return
-    player_name = user["name"]
 
+    player_name = user["name"]
+    await websocket.accept()
 
     room = get_room(room_code)
     if not room:
@@ -314,105 +302,74 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
             data = await websocket.receive_json()
             event = data.get("event")
 
-            # -------------------------
-            # START QUIZ
-            # -------------------------
             if event == "start_quiz":
-
-                if player_name != room["host"]:
-                    continue
-
-                room["scores"] = {p: 0 for p in room["players"]}
-                room["streak"] = {}
-                room["first_correct"] = {}
-
-                asyncio.create_task(run_quiz(room_code))
-
-            # -------------------------
-            # ANSWER
-            # -------------------------
+                if player_name == room["host"]:
+                    asyncio.create_task(run_quiz(room_code))
 
             elif event == "answer":
-                room = get_room(room_code)
-
-                q_index = room.get("current_question", 0)
-
-                if room_code not in answered_players:
-                    continue
-
-                if player_name in answered_players[room_code].get(q_index, set()):
-                    continue
-
-                answered_players[room_code][q_index].add(player_name)
+                if room_code not in active_quizzes: continue
+                
+                quiz_state = active_quizzes[room_code]
+                q_index = quiz_state["current_question"]
+                
+                # Prevent double answering same question
+                if player_name in quiz_state["answered"].get(q_index, set()): continue
+                if q_index not in quiz_state["answered"]: quiz_state["answered"][q_index] = set()
+                quiz_state["answered"][q_index].add(player_name)
 
                 answer = data.get("answer")
                 time_taken = data.get("time_taken", 0)
+                
+                room = get_room(room_code) # Get current scores
+                correct_answer = room["questions"][q_index]["answer"]
+                is_correct = (answer == correct_answer)
 
-                question = room["questions"][q_index]
-                correct_answer = question["answer"]
-
-                # ✅ SAFE INIT (IMPORTANT)
-                room.setdefault("first_correct", {})
-                room.setdefault("streak", {})
-                room.setdefault("scores", {})
-
-                is_first = False
-                if q_index not in room["first_correct"]:
-                    if answer == correct_answer:
-                        room["first_correct"][q_index] = player_name
-                        is_first = True
-
-    # streak logic
-                if answer == correct_answer:
-                    room["streak"][player_name] = room["streak"].get(player_name, 0) + 1
+                # Update Streaks
+                if is_correct:
+                    quiz_state["streaks"][player_name] = quiz_state["streaks"].get(player_name, 0) + 1
                 else:
-                    room["streak"][player_name] = 0
+                    quiz_state["streaks"][player_name] = 0
 
+                # Check if first correct
+                is_first = False
+                if is_correct and q_index not in quiz_state["first_correct"]:
+                    quiz_state["first_correct"][q_index] = player_name
+                    is_first = True
+
+                # Calculate Score
                 score = calculate_score(
-        correct=(answer == correct_answer),
-        time_taken=time_taken,
-        is_fastest=is_first,
-        streak=room["streak"].get(player_name, 0)
-    )
+                    correct=is_correct,
+                    time_taken=time_taken,
+                    is_fastest=is_first,
+                    streak=quiz_state["streaks"].get(player_name, 0)
+                )
 
-                # ensure scores exist
-                room.setdefault("scores", {})
-
-# ensure player exists
-                if player_name not in room["scores"]:
-                    room["scores"][player_name] = 0
-
-                room["scores"][player_name] += score
+                # Update DB
+                scores = room.get("scores", {})
+                scores[player_name] = scores.get(player_name, 0) + score
+                
                 rooms_collection.update_one(
-                {"room_code": room_code},
-                {"$set": {"scores": room["scores"]}}
-)
+                    {"room_code": room_code},
+                    {"$set": {"scores": scores}}
+                )
 
+                # Broadcast new leaderboard
                 leaderboard = sorted(
-        [{"name": p, "score": s} for p, s in room["scores"].items()],
-        key=lambda x: x["score"], reverse=True
-    )
-
+                    [{"name": p, "score": s} for p, s in scores.items()],
+                    key=lambda x: x["score"], reverse=True
+                )
                 await broadcast(room_code, {
-        "type": "leaderboard",
-        "scores": leaderboard
-    })
+                    "type": "leaderboard",
+                    "scores": leaderboard
+                })
 
     except WebSocketDisconnect:
-        print(f"[DISCONNECT] {player_name} left room {room_code}")
         connections.get(room_code, {}).pop(player_name, None)
-
-        # Notify remaining players
-        remaining_players = list(connections.get(room_code, {}).keys())
-        if remaining_players:
-            await broadcast(room_code, {
-                "type": "players",
-                "players": remaining_players,
-                "host": room["host"]
-            })
-
+        remaining = list(connections.get(room_code, {}).keys())
+        if remaining:
+            await broadcast(room_code, {"type": "players", "players": remaining, "host": room["host"]})
     except Exception as e:
-        print(f"[ERROR] WebSocket error: {e}")
+        print(f"WS Error: {e}")
         connections.get(room_code, {}).pop(player_name, None)
 
 
@@ -558,3 +515,114 @@ def get_user_stats(token: str = None):
             for g in games[:5]
         ]
     }
+
+# -------------------------
+# DATA APIs FOR DASHBOARD
+# -------------------------
+
+@app.get("/user/rooms")
+def get_user_rooms(token: str):
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    rooms = list(rooms_collection.find({"host": user_data["name"]}).sort("created_at", -1))
+    for r in rooms:
+        r["_id"] = str(r["_id"])
+        if "created_at" in r and isinstance(r["created_at"], datetime):
+            r["created_at"] = r["created_at"].isoformat()
+            
+    return rooms
+
+@app.get("/user/quiz-history")
+def get_user_quiz_history(token: str):
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    player_name = user_data["name"]
+    history = list(history_collection.find(
+        {"players": {player_name: {"$exists": True}}}
+    ).sort("created_at", -1))
+    
+    for h in history:
+        h["_id"] = str(h["_id"])
+        if "created_at" in h and isinstance(h["created_at"], datetime):
+            h["created_at"] = h["created_at"].isoformat()
+            
+    return history
+
+@app.get("/leaderboards")
+def get_global_leaderboards():
+    # Calculate global rankings from all history
+    all_history = list(history_collection.find())
+    user_scores = {}
+    
+    for game in all_history:
+        for player, score in game.get("players", {}).items():
+            user_scores[player] = user_scores.get(player, 0) + score
+            
+    leaderboard = sorted(
+        [{"name": name, "points": score} for name, score in user_scores.items()],
+        key=lambda x: x["points"], reverse=True
+    )
+    
+    return leaderboard[:20] # Top 20
+
+@app.get("/user/pdf-library")
+def get_user_pdf_library(token: str):
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    # List rooms where the user was host and questions were generated
+    rooms = list(rooms_collection.find({
+        "host": user_data["name"],
+        "questions": {"$exists": True, "$ne": []}
+    }).sort("created_at", -1))
+    
+    library = []
+    for r in rooms:
+        library.append({
+            "room_code": r["room_code"],
+            "question_count": len(r.get("questions", [])),
+            "created_at": r.get("created_at").isoformat() if isinstance(r.get("created_at"), datetime) else None,
+            "difficulty": r.get("settings", {}).get("difficulty", "medium")
+        })
+        
+    return library
+
+@app.delete("/user/rooms/{room_code}")
+def delete_user_room(room_code: str, token: str = None):
+    # If token is in headers or params
+    if not token:
+        raise HTTPException(status_code=400, detail="Token required")
+        
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    # Check if the user is the host
+    room = rooms_collection.find_one({"room_code": room_code})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    if room.get("host") != user_data["name"]:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this room")
+        
+    rooms_collection.delete_one({"room_code": room_code})
+    return {"message": "Room deleted successfully"}
+
+@app.delete("/user/quiz-history/{room_code}")
+def delete_quiz_history(room_code: str, token: str = None):
+    if not token:
+        raise HTTPException(status_code=400, detail="Token required")
+        
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    # In a real app, you might want to hide it for just this user, 
+    # but for simplicity we'll just delete the entry if they were a participant.
+    history_collection.delete_one({"room_code": room_code})
+    return {"message": "History entry deleted successfully"}

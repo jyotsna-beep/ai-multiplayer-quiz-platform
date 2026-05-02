@@ -1,93 +1,105 @@
-import Navbar from "../components/Navbar"
-import Background from "../components/Background"
-import { motion } from "framer-motion"
-import { Play, Users } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useEffect, useState } from "react"
+import { Plus, Code, Upload, Trophy } from "lucide-react"
+import Layout from "../components/Layout"
+import { StatCard, RecentGamesTable, ActivityTimeline } from "../components/DashboardComponents"
+import "../Dashboard.css"
 
 export default function Dashboard() {
-
   const navigate = useNavigate()
-  const [user, setUser] = useState(null)
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [currentDate, setCurrentDate] = useState("")
 
   useEffect(() => {
-
     const token = sessionStorage.getItem("token")
-    const storedUser = sessionStorage.getItem("user")
-
-    // 🚫 If not logged in → redirect
-    if (!token || !storedUser) {
+    if (!token) {
       navigate("/")
       return
     }
 
-    setUser(JSON.parse(storedUser))
+    fetchStats(token)
+    
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    setCurrentDate(new Date().toLocaleDateString('en-GB', options));
+  }, [navigate])
 
-  }, [])
+  const fetchStats = async (token) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/user/stats?token=${token}`)
+      if (response.ok) {
+        const data = await response.json()
+        setStats(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch dashboard stats:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Activity data (still partially mock or can be derived from recent games)
+  const activities = stats?.recentGames?.map(game => ({
+    color: game.score > 1000 ? "green" : "blue",
+    text: `Played quiz with <strong>${game.opponents}</strong> opponents. Score: <strong>${game.score}</strong>`,
+    time: game.date
+  })) || []
+
+  const formattedRecentGames = stats?.recentGames?.map((game, index) => ({
+    name: "Quiz Game", // API doesn't return room name in stats, using generic
+    date: game.date,
+    score: game.score,
+    rank: "N/A", // API doesn't return rank in stats
+    status: game.score > 0 ? "Won" : "Placed" // Simplified status
+  })) || []
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </Layout>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-white relative">
-
-      <Background />
-
-      <Navbar />
-
-      <div className="flex flex-col items-center justify-center mt-28 px-6">
-
-        {/* Welcome */}
-        <h2 className="text-5xl font-bold text-gray-800 mb-4 text-center">
-          Welcome {user?.name || ""} 👋
-        </h2>
-
-        <p className="text-gray-500 text-lg mb-16 text-center max-w-xl">
-          Upload study material, generate quizzes with AI,
-          and compete with players in real time.
-        </p>
-
-        <div className="flex gap-10 flex-wrap justify-center">
-
-          {/* Create Room */}
-          <motion.div
-            whileHover={{ scale: 1.07 }}
-            onClick={() => navigate("/create-room")}
-            className="backdrop-blur-lg bg-white/70 border w-72 h-52 rounded-2xl flex flex-col items-center justify-center shadow-xl cursor-pointer"
-          >
-            <div className="bg-gradient-to-r from-[#C1121F] to-[#F77F00] p-4 rounded-xl text-white">
-              <Play size={32} />
-            </div>
-
-            <p className="mt-4 text-xl font-semibold text-gray-800">
-              Create Room
-            </p>
-
-            <p className="text-sm text-gray-500 mt-1">
-              Host a quiz game
-            </p>
-          </motion.div>
-
-          {/* Join Room */}
-          <motion.div
-            whileHover={{ scale: 1.07 }}
-            onClick={() => navigate("/join-room")}
-            className="backdrop-blur-lg bg-white/70 border w-72 h-52 rounded-2xl flex flex-col items-center justify-center shadow-xl cursor-pointer"
-          >
-            <div className="bg-gradient-to-r from-[#F77F00] to-[#FFB703] p-4 rounded-xl text-white">
-              <Users size={32} />
-            </div>
-
-            <p className="mt-4 text-xl font-semibold text-gray-800">
-              Join Room
-            </p>
-
-            <p className="text-sm text-gray-500 mt-1">
-              Enter a room code
-            </p>
-          </motion.div>
-
-        </div>
-
+    <Layout>
+      <div className="welcome-section">
+        <h1 className="welcome-title">Dashboard</h1>
+        <p className="welcome-subtitle">{currentDate} - Welcome back, {stats?.name || "User"}</p>
       </div>
 
-    </div>
+      <div className="action-buttons">
+        <button className="btn-action btn-primary" onClick={() => navigate("/create-room")}>
+          <Plus size={18} />
+          Host a quiz
+        </button>
+        <button className="btn-action btn-secondary" onClick={() => navigate("/join-room")}>
+          <Code size={18} />
+          Join by code
+        </button>
+        <button className="btn-action btn-secondary" onClick={() => navigate("/pdf-library")}>
+          <Upload size={18} />
+          Upload PDF
+        </button>
+      </div>
+
+      <div className="stats-grid">
+        <StatCard label="Total Games" value={stats?.quizzesPlayed || 0} trend="All time" trendType="neutral" />
+        <StatCard label="Win Rate" value={`${stats?.winRate || 0}%`} trend="Success ratio" trendType="up" />
+        <StatCard label="Avg Score" value={stats?.averageScore || 0} trend="Per game" trendType="neutral" />
+        <StatCard label="Best Streak" value={stats?.longestStreak || 0} trend="Wins in a row" trendType="up" />
+      </div>
+
+      <div className="dashboard-grid">
+        <RecentGamesTable games={formattedRecentGames} />
+        <ActivityTimeline activities={activities.length > 0 ? activities : [
+          { color: "orange", text: "No recent activity found. Start a quiz!", time: "Today" }
+        ]} />
+      </div>
+    </Layout>
   )
 }
+

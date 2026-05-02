@@ -5,7 +5,7 @@ import os
 load_dotenv()
 MONGO_URL =os.getenv("MONGO_URI")
 
-client = MongoClient(MONGO_URL)
+client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
 
 db = client["ai_quiz_platform"]
 

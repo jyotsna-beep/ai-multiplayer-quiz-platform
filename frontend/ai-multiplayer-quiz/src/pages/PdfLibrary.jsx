@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-
-import Background from "../components/Background"
-import Navbar from "../components/Navbar"
+import Layout from "../components/Layout"
+import { FileText, Download } from "lucide-react"
 
 function formatDate(value) {
   if (!value) return "Not recorded"
@@ -26,11 +25,9 @@ export default function PdfLibrary() {
   const fetchUploads = async (token) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000"
-      const response = await fetch(`${apiUrl}/user/pdf-library`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const response = await fetch(`${apiUrl}/user/pdf-library?token=${token}`)
       const data = await response.json()
-      if (response.ok) setUploads(data.uploads || [])
+      if (response.ok) setUploads(data)
     } catch (error) {
       console.error("Failed to load PDF library:", error)
     } finally {
@@ -39,48 +36,54 @@ export default function PdfLibrary() {
   }
 
   return (
-    <div className="relative min-h-screen bg-[#f5f5f5]">
-      <Background />
-      <Navbar />
+    <Layout>
+      <div className="mb-8">
+        <h1 className="welcome-title">PDF Library</h1>
+        <p className="welcome-subtitle">Documents used to generate quizzes on your account.</p>
+      </div>
 
-      <main className="px-4 pb-10 pt-24 lg:ml-64 lg:px-6">
-        <div className="mb-7">
-          <h1 className="text-2xl font-semibold text-gray-950">PDF library</h1>
-          <p className="mt-1 text-sm text-gray-600">PDF uploads used to generate quizzes from your account.</p>
-        </div>
-
-        <section className="rounded-md border border-gray-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">File</th>
-                  <th className="px-5 py-3 font-semibold">Room</th>
-                  <th className="px-5 py-3 font-semibold">Uploaded</th>
-                  <th className="px-5 py-3 font-semibold">Difficulty</th>
-                  <th className="px-5 py-3 font-semibold">Questions</th>
+      <div className="card-panel">
+        <div className="overflow-x-auto">
+          <table className="games-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Room Code</th>
+                <th>Generated At</th>
+                <th>Questions</th>
+                <th>Difficulty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {uploads.map((upload, index) => (
+                <tr key={index}>
+                  <td className="room-name-cell">
+                    <FileText size={18} className="text-blue-500" />
+                    <span className="font-semibold text-gray-900">Study Material</span>
+                  </td>
+                  <td className="font-medium">{upload.room_code}</td>
+                  <td>{formatDate(upload.created_at)}</td>
+                  <td>{upload.question_count || 0} items</td>
+                  <td>
+                    <span className="badge badge-runner-up text-capitalize">{upload.difficulty || "Medium"}</span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {uploads.map((upload, index) => (
-                  <tr key={`${upload.room_code}-${upload.filename}-${index}`} className="hover:bg-gray-50">
-                    <td className="px-5 py-4 font-medium text-gray-950">{upload.filename}</td>
-                    <td className="px-5 py-4 text-gray-700">{upload.room_code}</td>
-                    <td className="px-5 py-4 text-gray-600">{formatDate(upload.created_at)}</td>
-                    <td className="px-5 py-4 capitalize text-gray-700">{upload.difficulty || "Not recorded"}</td>
-                    <td className="px-5 py-4 text-gray-700">{upload.questions_generated || 0} generated</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {loading && <div className="p-8 text-center text-gray-500">Loading documents...</div>}
+        {!loading && uploads.length === 0 && (
+          <div className="p-12 text-center">
+            <FileText size={48} className="mx-auto text-gray-200 mb-4" />
+            <p className="text-gray-500">No PDFs uploaded yet.</p>
           </div>
-          {!loading && uploads.length === 0 && <EmptyState message="No PDF uploads found yet. New quiz generations will appear here." />}
-          {loading && <EmptyState message="Loading PDF library..." />}
-        </section>
-      </main>
-    </div>
+        )}
+      </div>
+    </Layout>
   )
 }
+
 
 function EmptyState({ message }) {
   return <div className="border-t border-gray-100 px-5 py-10 text-center text-sm text-gray-500">{message}</div>

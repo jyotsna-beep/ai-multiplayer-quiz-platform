@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react"
-import { motion } from "framer-motion"
-import Background from "../components/Background"
-import QuizNavbar from "../components/QuizNavbar"
+import { motion, AnimatePresence } from "framer-motion"
 import { useNavigate, useParams } from "react-router-dom"
-import { AlertCircle, Wifi, WifiOff, RotateCcw } from "lucide-react"
+import { 
+  AlertCircle, Wifi, WifiOff, RotateCcw, Timer, Users, 
+  Trophy, CheckCircle2, XCircle, LogOut, Copy, ArrowRight
+} from "lucide-react"
+import "../Dashboard.css"
 
 export default function Quiz() {
-
   const { roomCode } = useParams()
   const navigate = useNavigate()
 
@@ -17,31 +18,22 @@ export default function Quiz() {
   const MAX_RECONNECT_ATTEMPTS = 5
 
   const [question, setQuestion] = useState(null)
-  const [players, setPlayers] = useState([])
+  const [leaderboard, setLeaderboard] = useState([])
+  const [allPlayers, setAllPlayers] = useState([])
   const [selected, setSelected] = useState(null)
+  const [isLocked, setIsLocked] = useState(false)
   const [timeLeft, setTimeLeft] = useState(0)
   const [totalTime, setTotalTime] = useState(10)
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState(null)
-  const [answered, setAnswered] = useState(false)
   const [currentQuestionNum, setCurrentQuestionNum] = useState(0)
   const [totalQuestions, setTotalQuestions] = useState(0)
+  const [showExitModal, setShowExitModal] = useState(false)
 
-  // Initialize quiz session
   useEffect(() => {
-    let token = sessionStorage.getItem("token")
-    const user = sessionStorage.getItem("user")
-
-    // 🔄 If sessionStorage was cleared but localStorage has token, restore it
-    if (!token && !user) {
-      const savedToken = localStorage.getItem("token")
-      if (savedToken) {
-        sessionStorage.setItem("token", savedToken)
-        token = savedToken
-      }
-    }
-
-    if (!token || !user) {
+    const token = sessionStorage.getItem("token")
+    const userStr = sessionStorage.getItem("user")
+    if (!token || !userStr) {
       navigate("/")
       return
     }
@@ -49,9 +41,7 @@ export default function Quiz() {
     connectWebSocket(token)
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
+      if (wsRef.current) wsRef.current.close()
       clearInterval(timerRef.current)
     }
   }, [roomCode])
@@ -59,12 +49,9 @@ export default function Quiz() {
   const connectWebSocket = (token) => {
     try {
       const wsUrl = import.meta.env.VITE_WS_URL || "ws://localhost:8000"
-      const ws = new WebSocket(
-        `${wsUrl}/ws/${roomCode}?token=${token}`
-      )
+      const ws = new WebSocket(`${wsUrl}/ws/${roomCode}?token=${token}`)
 
       ws.onopen = () => {
-        console.log("✅ WebSocket connected")
         setConnected(true)
         setError(null)
         reconnectAttempts.current = 0
@@ -79,40 +66,38 @@ export default function Quiz() {
         }
       }
 
-      ws.onerror = (error) => {
-        console.error("❌ WebSocket error:", error)
+      ws.onerror = () => {
         setConnected(false)
         setError("Connection error. Attempting to reconnect...")
       }
 
       ws.onclose = () => {
-        console.log("⚠️ WebSocket closed")
         setConnected(false)
-        
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts.current++
-          setTimeout(() => {
-            console.log(`Reconnecting... (Attempt ${reconnectAttempts.current})`)
-            connectWebSocket(token)
-          }, 2000)
+          setTimeout(() => connectWebSocket(token), 2000)
         } else {
-          setError("Connection lost. Unable to reconnect. Please rejoin the room.")
+          setError("Connection lost. Please refresh or rejoin.")
         }
       }
 
       wsRef.current = ws
     } catch (err) {
-      console.error("WebSocket connection failed:", err)
       setError("Failed to connect to quiz server")
     }
   }
 
+  useEffect(() => {
+    if (timeLeft === 0 && selected && !isLocked) {
+      lockInAnswer()
+    }
+  }, [timeLeft, selected, isLocked])
+
   const handleMessage = (data) => {
-    // 🧠 NEW QUESTION
     if (data.type === "question") {
       setQuestion(data.question)
       setSelected(null)
-      setAnswered(false)
+      setIsLocked(false)
       setCurrentQuestionNum(data.question_number)
       setTotalQuestions(data.total_questions)
 
@@ -121,7 +106,6 @@ export default function Quiz() {
       setTimeLeft(t)
       startTimeRef.current = Date.now()
 
-      // Start countdown timer
       clearInterval(timerRef.current)
       timerRef.current = setInterval(() => {
         setTimeLeft(prev => {
@@ -134,307 +118,354 @@ export default function Quiz() {
       }, 1000)
     }
 
-    // 🏆 LEADERBOARD UPDATE
     if (data.type === "leaderboard") {
-      setPlayers(data.scores || [])
+      console.log("Leaderboard Sync:", data.scores)
+      setLeaderboard(data.scores || [])
     }
 
-    // 🎉 GAME OVER
+    if (data.type === "players") {
+      setAllPlayers(data.players || [])
+    }
+
     if (data.type === "game_over") {
       clearInterval(timerRef.current)
       setTimeout(() => {
-        navigate("/winner", {
-          state: { leaderboard: data.scores }
-        })
-      }, 500)
-    }
-
-    // 👥 PLAYERS UPDATE
-    if (data.type === "players") {
-      console.log("Players in room:", data.players)
+        navigate("/winner", { state: { leaderboard: data.scores } })
+      }, 1000)
     }
   }
 
-  const sendAnswer = (option) => {
-    if (!connected) {
-      setError("Not connected to server. Please wait for reconnection.")
-      return
-    }
+  const lockInAnswer = () => {
+    if (!connected || !selected || timeLeft === 0 || isLocked) return
 
-    if (selected || timeLeft === 0 || answered) return
-
-    setSelected(option)
-    setAnswered(true)
-
+    setIsLocked(true)
     const timeTaken = (Date.now() - startTimeRef.current) / 1000
-
+    
     try {
       wsRef.current.send(JSON.stringify({
         event: "answer",
-        answer: option,
+        answer: selected,
         time_taken: timeTaken
       }))
     } catch (err) {
-      console.error("Failed to send answer:", err)
-      setError("Failed to submit answer. Retrying...")
+      setError("Failed to submit answer.")
+      setIsLocked(false)
     }
   }
 
-  const handleReconnect = () => {
-    let token = sessionStorage.getItem("token")
-    
-    // 🔄 Try localStorage if sessionStorage doesn't have it
-    if (!token) {
-      token = localStorage.getItem("token")
-      if (token) {
-        sessionStorage.setItem("token", token)
-      }
-    }
-    
-    if (token) {
-      reconnectAttempts.current = 0
-      connectWebSocket(token)
-    }
+  const selectOption = (option) => {
+    if (isLocked || timeLeft === 0) return
+    setSelected(option)
   }
 
-  const colors = [
-    "bg-blue-500 hover:bg-blue-600",
-    "bg-purple-500 hover:bg-purple-600",
-    "bg-green-500 hover:bg-green-600",
-    "bg-orange-500 hover:bg-orange-600"
-  ]
+  const copyRoomCode = () => {
+    navigator.clipboard.writeText(roomCode)
+    alert("Room code copied!")
+  }
 
-  const icons = ["A", "B", "C", "D"]
-
-  const progress = totalTime > 0 ? (timeLeft / totalTime) * 100 : 0
+  const progressPercentage = (timeLeft / totalTime) * 100
   const isUrgent = timeLeft <= 3
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 relative">
-      <Background />
-      <QuizNavbar />
-
-      {/* Connection Status Bar */}
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="sticky top-0 z-50"
-      >
-        <div className={`flex items-center justify-center gap-2 py-3 px-4 ${
-          connected 
-            ? "bg-gradient-to-r from-green-500 to-emerald-500" 
-            : "bg-gradient-to-r from-red-500 to-orange-500"
-        }`}>
-          <motion.div
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            {connected ? (
-              <Wifi size={18} className="text-white" />
-            ) : (
-              <WifiOff size={18} className="text-white" />
-            )}
-          </motion.div>
-          <span className="text-white font-semibold text-sm">
-            {connected ? "Connected" : `Disconnected - Reconnecting...`}
-          </span>
-        </div>
-      </motion.div>
-
-      {/* Error Alert */}
-      {error && (
-        <motion.div
-          initial={{ x: -400 }}
-          animate={{ x: 0 }}
-          className="fixed top-20 left-6 z-50 max-w-md"
-        >
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg shadow-lg flex gap-4 items-start">
-            <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={20} />
-            <div className="flex-1">
-              <p className="text-red-800 font-semibold text-sm">{error}</p>
-              {!connected && (
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleReconnect}
-                  className="mt-2 text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition flex items-center gap-1"
-                >
-                  <RotateCcw size={12} />
-                  Retry Now
-                </motion.button>
-              )}
+    <div className="min-h-screen bg-[#F8FAFC]">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-40 px-6 py-4">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setShowExitModal(true)}>
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                <Trophy size={20} />
+              </div>
+              <span className="text-xl font-bold text-gray-900 tracking-tight">QuizAI</span>
+            </div>
+            <div className="h-6 w-[1px] bg-gray-200" />
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Room Code</span>
+              <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
+                <span className="font-mono font-bold text-blue-600 tracking-widest">{roomCode}</span>
+                <button onClick={copyRoomCode} className="text-gray-400 hover:text-blue-600 transition">
+                  <Copy size={14} />
+                </button>
+              </div>
             </div>
           </div>
-        </motion.div>
-      )}
 
-      <div className="flex justify-center mt-8 px-6 pb-6">
-        <div className="flex gap-8 w-full max-w-7xl">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+              <span className="text-sm font-bold text-gray-600 uppercase tracking-wider">
+                {connected ? "Live Connection" : "Disconnected"}
+              </span>
+            </div>
+            <button 
+              onClick={() => setShowExitModal(true)}
+              className="btn-action btn-secondary text-red-600 hover:bg-red-50"
+            >
+              <LogOut size={18} />
+              Exit Quiz
+            </button>
+          </div>
+        </div>
+      </header>
 
-          {/* MAIN QUIZ AREA */}
-          <div className="flex-1">
+      <main className="max-w-[1600px] mx-auto p-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          
+          {/* Left Sidebar: Players */}
+          <div className="lg:col-span-2 hidden lg:block">
+            <div className="card-panel h-fit sticky top-32 p-5">
+              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                <Users size={14} />
+                Players ({allPlayers.length})
+              </h3>
+              <div className="space-y-3">
+                {allPlayers.map((player) => (
+                  <div key={player} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                      {player[0].toUpperCase()}
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 truncate">{player}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
 
-            {/* Question Progress */}
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 font-medium">Question {currentQuestionNum} of {totalQuestions}</p>
-                <div className="w-64 h-2 bg-gray-200 rounded-full mt-2 overflow-hidden">
-                  <motion.div
-                    layoutId="progress"
-                    initial={{ width: 0 }}
-                    animate={{ width: currentQuestionNum > 0 ? `${(currentQuestionNum / totalQuestions) * 100}%` : 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="h-full bg-gradient-to-r from-blue-500 to-purple-600"
-                  />
+          {/* Center: Quiz Logic */}
+          <div className="lg:col-span-7">
+            <div className="space-y-8">
+              {/* Question Info */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900">Question {currentQuestionNum}</h2>
+                  <p className="text-gray-500 font-medium">Out of {totalQuestions} total questions</p>
+                </div>
+                <div className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                  <div className={`p-3 rounded-xl ${isUrgent ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}>
+                    <Timer size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Time Remaining</p>
+                    <p className={`text-2xl font-black ${isUrgent ? "text-red-600" : "text-gray-900"}`}>
+                      {timeLeft} <span className="text-sm text-gray-400">sec</span>
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <span className={`text-4xl font-bold ${isUrgent ? "text-red-500" : "text-blue-600"}`}>
-                  {timeLeft}s
-                </span>
+
+              {/* Progress Bar */}
+              <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: "100%" }}
+                  animate={{ width: `${progressPercentage}%` }}
+                  transition={{ duration: 1, ease: "linear" }}
+                  className={`h-full ${isUrgent ? "bg-red-500" : "bg-blue-600"}`}
+                />
               </div>
-            </div>
 
-            {/* Question Card */}
-            <motion.div
-              key={currentQuestionNum}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl shadow-lg p-8 mb-8 border-2 border-blue-100"
-            >
-              <h2 className="text-2xl font-bold text-gray-800 text-center leading-relaxed">
-                {question?.question || "Loading question..."}
-              </h2>
-            </motion.div>
+              {/* Question Card */}
+              <div className="card-panel p-10 bg-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-8 opacity-5">
+                  <Trophy size={120} />
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 text-center leading-tight relative z-10">
+                  {question?.question || "Preparing the next challenge..."}
+                </h1>
+              </div>
 
-            {/* Timer Bar */}
-            <div className="w-full h-3 bg-gradient-to-r from-gray-200 to-gray-100 rounded-full mb-8 overflow-hidden">
-              <motion.div
-                animate={{ width: `${progress}%` }}
-                transition={{ ease: "linear", duration: 1 }}
-                className={`h-full transition-all ${
-                  isUrgent
-                    ? "bg-gradient-to-r from-red-500 to-orange-500"
-                    : "bg-gradient-to-r from-blue-500 to-purple-600"
-                }`}
-              />
-            </div>
+              {/* Options Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {question?.options?.map((option, idx) => {
+                  const isSelected = selected === option
+                  const isDisabled = isLocked || timeLeft === 0 || !connected
+                  const colors = [
+                    "border-blue-200 hover:bg-blue-50",
+                    "border-purple-200 hover:bg-purple-50",
+                    "border-emerald-200 hover:bg-emerald-50",
+                    "border-amber-200 hover:bg-amber-50"
+                  ]
 
-            {/* Answer Options */}
-            <div className="grid grid-cols-2 gap-4">
-              {question?.options?.map((option, index) => {
-                const isSelected = selected === option
-                const isDisabled = answered || !connected || timeLeft === 0
-
-                return (
-                  <motion.button
-                    key={index}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: index * 0.1 }}
-                    whileHover={!isDisabled ? { scale: 1.05, y: -4 } : {}}
-                    whileTap={!isDisabled ? { scale: 0.95 } : {}}
-                    onClick={() => sendAnswer(option)}
-                    disabled={isDisabled}
-                    className={`
-                      relative overflow-hidden
-                      p-6 rounded-xl
-                      text-lg font-bold
-                      transition-all duration-300
-                      flex items-center gap-4
-                      shadow-md hover:shadow-xl
-                      
-                      ${colors[index]}
-                      ${isSelected ? "ring-4 ring-offset-2 ring-yellow-400 scale-105" : ""}
-                      ${isDisabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}
-                      ${!connected ? "opacity-40" : ""}
-                    `}
-                  >
-                    <span className="text-2xl font-black bg-white/20 w-12 h-12 rounded-lg flex items-center justify-center">
-                      {icons[index]}
-                    </span>
-                    <span className="text-white flex-1 text-left">{option}</span>
-                    {isSelected && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="text-2xl">✓</motion.div>
-                    )}
-                  </motion.button>
-                )
-              })}
-            </div>
-
-          </div>
-
-          {/* LEADERBOARD SIDEBAR */}
-          <div className="w-80">
-            <div className="bg-white rounded-2xl shadow-lg p-6 border-2 border-blue-100 sticky top-24">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
-                <span className="text-2xl">🏆</span>
-                Leaderboard
-              </h2>
-
-              <div className="space-y-3">
-                {players.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">Waiting for scores...</p>
-                ) : (
-                  players.map((player, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ x: 20, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: index * 0.1 }}
+                  return (
+                    <motion.button
+                      key={idx}
+                      whileHover={!isDisabled ? { y: -2 } : {}}
+                      whileTap={!isDisabled ? { scale: 0.98 } : {}}
+                      onClick={() => selectOption(option)}
+                      disabled={isDisabled}
                       className={`
-                        p-4 rounded-xl transition-all
-                        ${index === 0 
-                          ? "bg-gradient-to-r from-yellow-100 to-orange-100 border-2 border-yellow-400 shadow-lg" 
-                          : index === 1
-                          ? "bg-gradient-to-r from-gray-100 to-slate-100 border-2 border-gray-400"
-                          : index === 2
-                          ? "bg-gradient-to-r from-orange-100 to-amber-100 border-2 border-orange-300"
-                          : "bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200"
-                        }
+                        p-6 rounded-2xl border-2 text-left transition-all relative group h-full
+                        ${isSelected ? "border-blue-600 bg-blue-50 ring-4 ring-blue-100" : colors[idx]}
+                        ${isDisabled && !isSelected ? "opacity-50" : ""}
+                        ${isLocked && isSelected ? "border-green-600 bg-green-50 ring-green-100" : ""}
                       `}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 flex-1">
-                          <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            className={`text-2xl font-black w-10 h-10 flex items-center justify-center rounded-lg
-                              ${index === 0 ? "bg-yellow-400" : index === 1 ? "bg-gray-400" : index === 2 ? "bg-orange-400" : "bg-gray-300"}
-                              text-white
-                            `}
-                          >
-                            {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
-                          </motion.span>
-                          <div className="flex-1">
-                            <p className="font-bold text-gray-800">{player.name}</p>
-                            <p className="text-xs text-gray-600">Player</p>
-                          </div>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm
+                          ${isSelected ? (isLocked ? "bg-green-600" : "bg-blue-600") + " text-white" : "bg-white text-gray-400 border border-gray-200"}
+                        `}>
+                          {String.fromCharCode(65 + idx)}
                         </div>
-                        <div className="text-right">
-                          <motion.p
-                            key={player.score}
-                            initial={{ scale: 1.2, color: "#fbbf24" }}
-                            animate={{ scale: 1, color: "#000000" }}
-                            className="text-2xl font-black"
-                          >
-                            {player.score}
-                          </motion.p>
-                          <p className="text-xs text-gray-600">points</p>
+                        <span className={`text-xl font-bold ${isSelected ? "text-blue-900" : "text-gray-700"}`}>
+                          {option}
+                        </span>
+                        {isLocked && isSelected && (
+                          <CheckCircle2 size={24} className="ml-auto text-green-600" />
+                        )}
+                      </div>
+                    </motion.button>
+                  )
+                })}
+              </div>
+
+              {/* Action Area */}
+              <div className="flex flex-col items-center gap-4 pt-4">
+                <AnimatePresence mode="wait">
+                  {selected && !isLocked && timeLeft > 0 && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      onClick={lockInAnswer}
+                      className="btn-action btn-primary w-full max-w-md h-16 text-xl justify-center shadow-blue-200 shadow-xl"
+                    >
+                      Confirm Selection
+                      <ArrowRight size={24} className="ml-2" />
+                    </motion.button>
+                  )}
+
+                  {isLocked && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex items-center gap-3 bg-green-600 text-white px-8 py-4 rounded-2xl font-bold shadow-lg"
+                    >
+                      <CheckCircle2 size={24} />
+                      Answer Locked! Waiting for round to end...
+                    </motion.div>
+                  )}
+
+                  {!selected && !isLocked && timeLeft > 0 && (
+                    <motion.p 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-gray-400 font-bold uppercase tracking-widest text-sm"
+                    >
+                      Choose an option to continue
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Sidebar: Leaderboard */}
+          <div className="lg:col-span-3">
+            <div className="card-panel sticky top-32">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 rounded-t-2xl">
+                <h3 className="font-black text-gray-900 uppercase tracking-widest text-sm flex items-center gap-2">
+                  <Trophy size={16} className="text-yellow-500" />
+                  Live Standings
+                </h3>
+                <span className="text-xs font-bold text-gray-400">REALTIME</span>
+              </div>
+              <div className="p-4 space-y-2">
+                {leaderboard.length > 0 ? (
+                  leaderboard.map((entry, idx) => (
+                    <motion.div 
+                      key={entry.name}
+                      layout
+                      className={`
+                        p-4 rounded-xl flex items-center justify-between
+                        ${idx === 0 ? "bg-yellow-50 border border-yellow-200" : "bg-white border border-gray-100 shadow-sm"}
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`
+                          w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs
+                          ${idx === 0 ? "bg-yellow-500 text-white" : "bg-gray-100 text-gray-500"}
+                        `}>
+                          {idx + 1}
                         </div>
+                        <span className="font-bold text-gray-700">{entry.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-black text-gray-900">{entry.score}</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">PTS</p>
                       </div>
                     </motion.div>
                   ))
+                ) : (
+                  <div className="p-12 text-center">
+                    <Trophy size={32} className="mx-auto text-gray-200 mb-2" />
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Waiting for round 1</p>
+                  </div>
                 )}
               </div>
             </div>
           </div>
-
         </div>
-      </div>
+      </main>
+
+      {/* Exit Confirmation Modal */}
+      {showExitModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
+            onClick={() => setShowExitModal(false)}
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white rounded-3xl p-8 max-w-sm w-full relative z-10 shadow-2xl"
+          >
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+              <LogOut size={32} />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">Leave Quiz?</h3>
+            <p className="text-gray-500 text-center mb-8">You'll lose your current score and progress in this session.</p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowExitModal(false)}
+                className="btn-action btn-secondary flex-1 justify-center"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => navigate("/dashboard")}
+                className="btn-action btn-primary bg-red-600 hover:bg-red-700 flex-1 justify-center"
+              >
+                Yes, Exit
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Error Toast */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="fixed bottom-6 right-6 z-50 bg-red-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 max-w-md"
+          >
+            <AlertCircle size={24} />
+            <div className="flex-1">
+              <p className="font-bold">Connection Error</p>
+              <p className="text-sm opacity-90">{error}</p>
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="p-2 hover:bg-white/20 rounded-lg transition"
+            >
+              <RotateCcw size={18} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
-}
+}

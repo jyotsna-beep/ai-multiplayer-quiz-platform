@@ -10,6 +10,10 @@ import Lobby from "./pages/Lobby"
 import Quiz from "./pages/Quiz"
 import Winner from "./pages/Winner"
 import Profile from "./pages/Profile"
+import MyRooms from "./pages/MyRooms"
+import QuizHistory from "./pages/QuizHistory"
+import PdfLibrary from "./pages/PdfLibrary"
+import Leaderboards from "./pages/Leaderboards"
 
 function App() {
   return (
@@ -27,15 +31,17 @@ function App() {
 
       <Route path="/lobby/:roomCode" element={<Lobby />} />
 
-
-
       <Route path="/quiz/:roomCode" element={<Quiz />} />
 
       <Route path="/winner" element={<Winner />} />
       <Route path="/profile" element={<Profile />} />
+      <Route path="/my-rooms" element={<MyRooms />} />
+      <Route path="/quiz-history" element={<QuizHistory />} />
+      <Route path="/pdf-library" element={<PdfLibrary />} />
+      <Route path="/leaderboards" element={<Leaderboards />} />
 
     </Routes>
   )
 }
 
-export default App
+export default App
