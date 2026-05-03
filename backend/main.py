@@ -707,3 +707,65 @@ def delete_quiz_history(room_code: str, token: str = None):
     # but for simplicity we'll just delete the entry if they were a participant.
     history_collection.delete_one({"room_code": room_code})
     return {"message": "History entry deleted successfully"}
+
+# -------------------------
+# PROFILE MANAGEMENT APIs
+# -------------------------
+
+@app.get("/user/profile")
+def get_profile(token: str):
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user = users_collection.find_one({"email": user_data["email"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "name": user.get("name"),
+        "email": user.get("email"),
+        "bio": user.get("bio", "Avid quizzer and AI enthusiast."),
+        "visibility": user.get("visibility", "Public"),
+        "show_online_status": user.get("show_online_status", True),
+        "avatar_id": str(user.get("avatar_id")) if user.get("avatar_id") else None,
+        "join_date": user.get("created_at", datetime.utcnow()).strftime("%B %d, %Y")
+    }
+
+@app.post("/user/update-profile")
+async def update_profile(data: dict):
+    token = data.get("token")
+    name = data.get("name")
+    bio = data.get("bio")
+    
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    users_collection.update_one(
+        {"email": user_data["email"]},
+        {"$set": {"name": name, "bio": bio}}
+    )
+    
+    return {"message": "Profile updated successfully"}
+
+@app.post("/user/update-privacy")
+async def update_privacy(data: dict):
+    token = data.get("token")
+    visibility = data.get("visibility")
+    show_online_status = data.get("show_online_status")
+    
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    update_fields = {}
+    if visibility: update_fields["visibility"] = visibility
+    if show_online_status is not None: update_fields["show_online_status"] = show_online_status
+    
+    users_collection.update_one(
+        {"email": user_data["email"]},
+        {"$set": update_fields}
+    )
+    
+    return {"message": "Privacy settings updated successfully"}
