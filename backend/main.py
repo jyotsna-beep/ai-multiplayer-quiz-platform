@@ -18,10 +18,12 @@ from security import create_token, verify_token
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-
+origins = [
+    "https://ai-multiplayer-quiz-platform-1.onrender.com",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
