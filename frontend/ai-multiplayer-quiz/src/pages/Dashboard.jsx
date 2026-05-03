@@ -46,12 +46,12 @@ export default function Dashboard() {
     time: game.date
   })) || []
 
-  const formattedRecentGames = stats?.recentGames?.map((game, index) => ({
-    name: "Quiz Game", // API doesn't return room name in stats, using generic
+  const formattedRecentGames = stats?.recentGames?.map((game) => ({
+    name: `Room ${game.room_code}`,
     date: game.date,
     score: game.score,
-    rank: "N/A", // API doesn't return rank in stats
-    status: game.score > 0 ? "Won" : "Placed" // Simplified status
+    rank: game.rank === 1 ? "1st" : game.rank === 2 ? "2nd" : game.rank === 3 ? "3rd" : `${game.rank}th`,
+    status: game.rank === 1 ? "Won" : game.rank === 2 ? "Runner-up" : "Placed"
   })) || []
 
   if (loading) {

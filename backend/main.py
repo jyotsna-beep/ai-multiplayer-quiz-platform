@@ -2,15 +2,17 @@ import io
 import asyncio
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, Body, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, File, Form, Body, HTTPException, UploadFile, Query
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, EmailStr
 import pdfplumber
 import bcrypt
+import json
+import random
 
 from services.ai_generator import generate_questions
 from services.room_manager import create_room, join_room, get_room
-from database import rooms_collection, users_collection, history_collection
+from database import rooms_collection, users_collection, history_collection, pdfs_collection, fs
 from security import create_token, verify_token
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -141,10 +143,25 @@ async def generate_quiz(
     file: UploadFile = File(...),
     questions: int = Form(...),
     difficulty: str = Form(...),
-    time_per_question: int = Form(10)
+    time_per_question: int = Form(10),
+    token: str = Form(...)
 ):
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
     try:
         file_bytes = await file.read()
+        
+        # Save PDF to GridFS and pdfs_collection
+        file_id = fs.put(file_bytes, filename=file.filename)
+        pdfs_collection.insert_one({
+            "user_name": user_data["name"],
+            "filename": file.filename,
+            "file_id": file_id,
+            "created_at": datetime.utcnow()
+        })
+
         text = ""
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             for page in pdf.pages:
@@ -165,17 +182,18 @@ async def generate_quiz(
                 } for i in range(questions)
             ]
 
-        # Store in database
+        # Update room with questions and settings
         rooms_collection.update_one(
             {"room_code": room_code},
             {"$set": {
                 "questions": quiz,
-                "current_question": 0,
+                "filename": file.filename,
                 "settings": {
-                    "num_questions": len(quiz),
+                    "total_questions": questions,
                     "difficulty": difficulty,
                     "time_per_question": time_per_question
-                }
+                },
+                "status": "ready"
             }}
         )
 
@@ -257,6 +275,7 @@ async def run_quiz(room_code):
         "total_questions": len(questions),
         "difficulty": final_room.get("settings", {}).get("difficulty", "medium"),
         "time_per_question": time_per_q,
+        "source_file": final_room.get("filename", "Generated Text"),
         "created_at": datetime.utcnow()
     })
 
@@ -274,28 +293,56 @@ async def run_quiz(room_code):
     active_quizzes.pop(room_code, None)
 
 @app.websocket("/ws/{room_code}")
-async def quiz_websocket(websocket: WebSocket, room_code: str, token: str):
+async def quiz_websocket(websocket: WebSocket, room_code: str):
+    # Normalize room code to ensure case-insensitivity consistency across connections
+    room_code = room_code.strip().upper()
+    
+    token = websocket.query_params.get("token")
     user = verify_token(token)
+    
     if not user:
+        print(f"[WS REJECTED] Invalid token for room {room_code}")
+        await websocket.accept()
+        await websocket.send_json({"type": "error", "message": "Authentication failed"})
         await websocket.close(code=4001)
         return
 
     player_name = user["name"]
     await websocket.accept()
+    print(f"[WS CONNECTED] {player_name} joined room {room_code}")
 
     room = get_room(room_code)
     if not room:
+        print(f"[WS ERROR] Room {room_code} not found")
+        await websocket.send_json({"type": "error", "message": "Room not found"})
         await websocket.close()
         return
 
     connections.setdefault(room_code, {})
     connections[room_code][player_name] = websocket
 
+    # Sync player list
     await broadcast(room_code, {
         "type": "players",
         "players": list(connections[room_code].keys()),
         "host": room["host"]
     })
+
+    # JOIN-IN-PROGRESS SYNC
+    if room_code in active_quizzes:
+        quiz_state = active_quizzes[room_code]
+        q_index = quiz_state["current_question"]
+        questions = room.get("questions", [])
+        
+        if q_index < len(questions):
+            print(f"[WS SYNC] Sending current question {q_index+1} to {player_name}")
+            await websocket.send_json({
+                "type": "question",
+                "question": questions[q_index],
+                "question_number": q_index + 1,
+                "total_questions": len(questions),
+                "timer": room.get("settings", {}).get("time_per_question", 10)
+            })
 
     try:
         while True:
@@ -446,7 +493,7 @@ def get_user_stats(token: str = None):
 
     # Get all quiz history for this player
     games = list(history_collection.find(
-        {"players": {player_name: {"$exists": True}}}
+        {f"players.{player_name}": {"$exists": True}}
     ).sort("created_at", -1))
 
     # Calculate statistics
@@ -487,13 +534,27 @@ def get_user_stats(token: str = None):
     all_users_stats = []
     for u in users_collection.find():
         u_games = list(history_collection.find(
-            {"players": {u["name"]: {"$exists": True}}}
+            {f"players.{u['name']}": {"$exists": True}}
         ))
         u_points = sum([g["players"].get(u["name"], 0) for g in u_games])
         all_users_stats.append({"name": u["name"], "points": u_points})
 
     all_users_stats.sort(key=lambda x: x["points"], reverse=True)
     ranking = next((i + 1 for i, u in enumerate(all_users_stats) if u["name"] == player_name), 999)
+
+    recent_games_list = []
+    for g in games[:5]:
+        scores = g.get("players", {})
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        rank = next((i + 1 for i, (name, s) in enumerate(sorted_scores) if name == player_name), "N/A")
+        
+        recent_games_list.append({
+            "room_code": g.get("room_code", "N/A"),
+            "date": g.get("created_at", datetime.utcnow()).strftime("%b %d, %Y"),
+            "score": scores.get(player_name, 0),
+            "opponents": len(scores),
+            "rank": rank
+        })
 
     return {
         "name": user.get("name"),
@@ -506,14 +567,7 @@ def get_user_stats(token: str = None):
         "totalPoints": totalPoints,
         "ranking": ranking,
         "joinDate": user.get("created_at", datetime.utcnow()).strftime("%B %d, %Y") if "created_at" in user else "Recently",
-        "recentGames": [
-            {
-                "date": g.get("created_at", datetime.utcnow()).strftime("%b %d, %Y"),
-                "score": g["players"].get(player_name, 0),
-                "opponents": len(g.get("players", {}))
-            }
-            for g in games[:5]
-        ]
+        "recentGames": recent_games_list
     }
 
 # -------------------------
@@ -542,7 +596,7 @@ def get_user_quiz_history(token: str):
     
     player_name = user_data["name"]
     history = list(history_collection.find(
-        {"players": {player_name: {"$exists": True}}}
+        {f"players.{player_name}": {"$exists": True}}
     ).sort("created_at", -1))
     
     for h in history:
@@ -552,12 +606,38 @@ def get_user_quiz_history(token: str):
             
     return history
 
+@app.get("/user/pdfs")
+def get_user_pdfs(token: str):
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    pdfs = list(pdfs_collection.find({"user_name": user_data["name"]}).sort("created_at", -1))
+    for p in pdfs:
+        p["_id"] = str(p["_id"])
+        p["file_id"] = str(p["file_id"])
+        if "created_at" in p and isinstance(p["created_at"], datetime):
+            p["created_at"] = p["created_at"].isoformat()
+            
+    return pdfs
+
+@app.get("/pdf/{file_id}")
+async def get_pdf(file_id: str):
+    try:
+        from bson import ObjectId
+        grid_out = fs.get(ObjectId(file_id))
+        return StreamingResponse(
+            io.BytesIO(grid_out.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename={grid_out.filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="File not found")
+
 @app.get("/leaderboards")
 def get_global_leaderboards():
-    # Calculate global rankings from all history
     all_history = list(history_collection.find())
     user_scores = {}
-    
     for game in all_history:
         for player, score in game.get("players", {}).items():
             user_scores[player] = user_scores.get(player, 0) + score
@@ -566,31 +646,32 @@ def get_global_leaderboards():
         [{"name": name, "points": score} for name, score in user_scores.items()],
         key=lambda x: x["points"], reverse=True
     )
-    
-    return leaderboard[:20] # Top 20
+    return leaderboard[:20]
 
-@app.get("/user/pdf-library")
-def get_user_pdf_library(token: str):
+@app.post("/user/change-password")
+async def change_password(data: dict):
+    token = data.get("token")
+    old_password = data.get("old_password")
+    new_password = data.get("new_password")
+    
     user_data = verify_token(token)
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid token")
-        
-    # List rooms where the user was host and questions were generated
-    rooms = list(rooms_collection.find({
-        "host": user_data["name"],
-        "questions": {"$exists": True, "$ne": []}
-    }).sort("created_at", -1))
     
-    library = []
-    for r in rooms:
-        library.append({
-            "room_code": r["room_code"],
-            "question_count": len(r.get("questions", [])),
-            "created_at": r.get("created_at").isoformat() if isinstance(r.get("created_at"), datetime) else None,
-            "difficulty": r.get("settings", {}).get("difficulty", "medium")
-        })
+    user = users_collection.find_one({"email": user_data["email"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
         
-    return library
+    if not bcrypt.checkpw(old_password.encode('utf-8'), user["password"]):
+        raise HTTPException(status_code=400, detail="Incorrect old password")
+        
+    hashed_new = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+    users_collection.update_one(
+        {"email": user_data["email"]},
+        {"$set": {"password": hashed_new}}
+    )
+    
+    return {"message": "Password updated successfully"}
 
 @app.delete("/user/rooms/{room_code}")
 def delete_user_room(room_code: str, token: str = None):

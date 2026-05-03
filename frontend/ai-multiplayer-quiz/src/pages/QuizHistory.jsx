@@ -73,46 +73,73 @@ export default function QuizHistory() {
       <div className="space-y-6">
         {history.map((game) => (
           <div key={`${game.room_code}-${game.created_at}`} className="card-panel">
-            <div className="card-header">
-              <div>
-                <h3 className="card-title">Room {game.room_code}</h3>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatDate(game.created_at)} • {game.total_questions} questions • {game.difficulty || "medium"}
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-medium text-gray-700">
-                  Winner: <span className="text-blue-600">{game.leaderboard?.[0] ? `${game.leaderboard[0].name} (${game.leaderboard[0].score})` : "N/A"}</span>
-                </span>
-                <button
-                  onClick={() => deleteHistoryEntry(game.room_code)}
-                  disabled={deletingHistory === game.room_code}
-                  className="text-red-500 hover:text-red-700"
-                >
-                  <Trash2 size={18} />
-                </button>
+            <div className="card-header border-b border-gray-100 bg-gray-50/30 p-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="bg-blue-600 text-white px-4 py-2 rounded-xl font-black text-lg shadow-lg shadow-blue-100">
+                    #{game.room_code}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-gray-900 tracking-tight">Quiz Session</h3>
+                    <p className="text-sm font-medium text-gray-500">{formatDate(game.created_at)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="badge badge-runner-up bg-blue-50 text-blue-600 border-blue-100 uppercase text-[10px] tracking-widest px-3">
+                      {game.difficulty || "Medium"}
+                    </span>
+                    <span className="badge badge-runner-up bg-purple-50 text-purple-600 border-purple-100 uppercase text-[10px] tracking-widest px-3">
+                      {game.total_questions} Questions
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => deleteHistoryEntry(game.room_code)}
+                    disabled={deletingHistory === game.room_code}
+                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-2"
+                    title="Delete History"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               </div>
             </div>
 
             <div className="p-6">
+              {/* Session Overview Bar */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Source Material</p>
+                  <p className="text-sm font-bold text-gray-700 truncate" title={game.source_file}>
+                    {game.source_file || "Generated Text"}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Time Settings</p>
+                  <p className="text-sm font-bold text-gray-700">
+                    {game.time_per_question || 10}s per question
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Top Performer</p>
+                  <p className="text-sm font-bold text-blue-600 truncate">
+                    {game.leaderboard?.[0]?.name || "N/A"} ({game.leaderboard?.[0]?.score || 0} pts)
+                  </p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                 
                 {/* Questions Review */}
-                <div className="xl:col-span-2 space-y-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
-                      Questions Review
-                    </h4>
-                    <span className="badge badge-runner-up bg-blue-50 text-blue-600 border-blue-100">
-                      {game.questions?.length || 0} Total
-                    </span>
-                  </div>
-
-                  <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                <div className="xl:col-span-2">
+                  <h4 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    Questions Log
+                  </h4>
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                     {(game.questions || []).map((q, idx) => (
-                      <div key={idx} className="bg-gray-50/50 rounded-2xl p-5 border border-gray-100 hover:border-blue-100 transition shadow-sm">
+                      <div key={idx} className="bg-white rounded-2xl p-5 border border-gray-100 hover:border-blue-200 transition shadow-sm">
                         <div className="flex items-start gap-4 mb-4">
-                          <span className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-sm flex-shrink-0">
+                          <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center font-black text-sm flex-shrink-0">
                             {idx + 1}
                           </span>
                           <p className="text-lg font-bold text-gray-800 leading-snug">{q.question}</p>
@@ -128,7 +155,7 @@ export default function QuizHistory() {
                                   p-3 rounded-xl border text-sm font-medium transition
                                   ${isCorrect 
                                     ? "bg-green-50 border-green-200 text-green-700 shadow-sm" 
-                                    : "bg-white border-gray-100 text-gray-500"}
+                                    : "bg-gray-50/50 border-gray-100 text-gray-400"}
                                 `}
                               >
                                 <div className="flex items-center justify-between">
@@ -141,18 +168,13 @@ export default function QuizHistory() {
                         </div>
                       </div>
                     ))}
-                    {(!game.questions || game.questions.length === 0) && (
-                      <div className="p-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                        <p className="text-gray-400 text-sm font-medium italic">Detailed question data not available for this session.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 {/* Final Standings */}
                 <div className="space-y-6">
                   <h4 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 mb-4">
-                    Final Standings
+                    Final Scoreboard
                   </h4>
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
                     {(game.leaderboard || []).map((score, idx) => (
@@ -160,7 +182,7 @@ export default function QuizHistory() {
                         <div className="flex items-center gap-3">
                           <div className={`
                             w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs
-                            ${idx === 0 ? "bg-yellow-500 text-white" : "bg-gray-100 text-gray-400"}
+                            ${idx === 0 ? "bg-yellow-400 text-white" : "bg-gray-100 text-gray-400"}
                           `}>
                             {idx + 1}
                           </div>
@@ -171,11 +193,15 @@ export default function QuizHistory() {
                     ))}
                   </div>
 
-                  <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50">
-                    <p className="text-xs font-bold text-blue-900 uppercase tracking-widest mb-1">Session Stats</p>
-                    <div className="flex justify-between text-xs font-medium text-blue-700">
-                      <span>Room Code</span>
-                      <span className="font-mono font-black">{game.room_code}</span>
+                  <div className="p-6 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl text-white shadow-xl shadow-blue-100 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                      <History size={80} />
+                    </div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 text-blue-100">Session Verification</p>
+                    <p className="text-sm font-medium mb-4">This quiz was generated from AI and played in real-time.</p>
+                    <div className="flex items-center justify-between bg-white/10 p-3 rounded-xl backdrop-blur-sm">
+                      <span className="text-xs font-bold text-blue-50">Room ID</span>
+                      <span className="font-mono font-black text-lg tracking-tighter">{game.room_code}</span>
                     </div>
                   </div>
                 </div>

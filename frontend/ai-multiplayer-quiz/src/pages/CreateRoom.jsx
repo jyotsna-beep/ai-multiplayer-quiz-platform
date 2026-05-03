@@ -42,12 +42,14 @@ export default function CreateRoom() {
       if (!roomResponse.ok) throw new Error("Failed to create room")
 
       const roomCode = roomData.room_code
+      const token = sessionStorage.getItem("token")
       const formData = new FormData()
       formData.append("file", file)
       formData.append("questions", questions)
       formData.append("difficulty", difficulty)
       formData.append("room_code", roomCode)
       formData.append("time_per_question", timePerQuestion)
+      formData.append("token", token)
 
       const quizResponse = await fetch(`${apiUrl}/generate-quiz`, {
         method: "POST",

@@ -94,6 +94,13 @@ export default function Quiz() {
   }, [timeLeft, selected, isLocked])
 
   const handleMessage = (data) => {
+    console.log("[WS RECEIVED]", data.type, data)
+    
+    if (data.type === "error") {
+      setError(data.message)
+      return
+    }
+
     if (data.type === "question") {
       setQuestion(data.question)
       setSelected(null)
