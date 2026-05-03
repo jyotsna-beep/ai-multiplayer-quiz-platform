@@ -112,7 +112,7 @@ Or use MongoDB Atlas (cloud) and update `MONGO_URI` in `.env`.
 
 This project is deployed on [Render](https://render.com).
 
-**Live Demo:** `https://ai-multiplayer-quiz-platform-1.onrender.com`
+**Live Demo:** [Open App](https://ai-multiplayer-quiz-platform-1.onrender.com)
 
 To deploy your own version:
 1. Push code to GitHub
@@ -163,6 +163,3 @@ ai-multiplayer-quiz-platform/
 
 ---
 
-## License
-
-MIT License
