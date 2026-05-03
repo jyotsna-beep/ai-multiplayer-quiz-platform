@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Python (ADD THIS 🔥)
+
 __pycache__/
 *.pyc
 venv/
