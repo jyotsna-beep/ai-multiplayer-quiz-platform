@@ -10,7 +10,7 @@ export default function Sidebar() {
     { label: "My rooms", icon: <Users size={20} />, path: "/my-rooms" },
     { label: "Quiz history", icon: <History size={20} />, path: "/quiz-history" },
     { label: "PDF library", icon: <Library size={20} />, path: "/pdf-library", section: "TOOLS" },
-    { label: "Leaderboards", icon: <Trophy size={20} />, path: "/leaderboards" },
+    
     { label: "Profile", icon: <UserCircle size={20} />, path: "/profile", section: "SETTINGS" },
   ]
 
