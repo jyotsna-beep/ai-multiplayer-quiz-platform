@@ -71,55 +71,55 @@ export default function Login() {
 
   return (
 
-    <div className="min-h-screen flex items-center justify-center bg-white relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
 
       <GameBackground />
 
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glow-card w-[420px] relative z-20 p-8"
+        className="w-[420px] bg-white rounded-xl p-8 relative z-20 shadow-lg border border-gray-200"
       >
 
         <h2 className="text-3xl font-bold text-gray-800 mb-2">
           Welcome Back
         </h2>
 
-        <p className="text-gray-500 mb-8">
-          Login to continue
+        <p className="text-gray-500 mb-8 text-sm">
+          Login to your account and continue playing
         </p>
 
         {/* Email */}
         <input
           type="email"
-          placeholder="Email"
+          placeholder="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full border p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
+          className="w-full border border-gray-300 p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50 transition"
         />
 
         {/* Password */}
-        <div className="relative mb-4">
+        <div className="relative mb-2">
 
           <input
             type={showPassword ? "text" : "password"}
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="w-full border border-gray-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50 transition"
           />
 
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-3 text-gray-500"
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
           >
             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
 
         </div>
 
-        <div className="text-right text-sm text-gray-500 mb-6 cursor-pointer">
+        <div className="text-right text-sm text-gray-500 mb-6 cursor-pointer hover:text-blue-600 transition">
           Forgot password?
         </div>
 
@@ -127,20 +127,20 @@ export default function Login() {
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-60"
+          className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-60"
         >
           {loading ? "Logging in..." : "Login"}
         </button>
 
         {/* Divider */}
         <div className="flex items-center my-6">
-          <div className="flex-grow border-t"></div>
+          <div className="flex-grow border-t border-gray-300"></div>
           <span className="mx-3 text-gray-400 text-sm">OR</span>
-          <div className="flex-grow border-t"></div>
+          <div className="flex-grow border-t border-gray-300"></div>
         </div>
 
         {/* Google Login */}
-        <button className="w-full border flex items-center justify-center gap-3 py-3 rounded-lg hover:bg-gray-50 transition">
+        <button className="w-full border border-gray-300 flex items-center justify-center gap-3 py-3 rounded-lg hover:bg-gray-50 transition text-gray-700">
           <img
             src="https://www.svgrepo.com/show/475656/google-color.svg"
             className="w-5"
@@ -149,9 +149,9 @@ export default function Login() {
         </button>
 
         {/* Signup */}
-        <p className="text-center text-gray-500 mt-6 text-sm">
+        <p className="text-center text-gray-600 mt-6 text-sm">
           Don't have an account?{" "}
-          <Link to="/signup" className="text-[#C1121F] font-semibold">
+          <Link to="/signup" className="text-blue-600 font-semibold hover:text-blue-700 transition">
             Sign up
           </Link>
         </p>

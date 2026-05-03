@@ -69,22 +69,22 @@ export default function Signup() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
 
       <GameBackground />
 
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-[400px] bg-white shadow-2xl rounded-2xl p-8 relative z-20"
+        className="w-[420px] bg-white rounded-xl p-8 relative z-20 shadow-lg border border-gray-200"
       >
 
         <h2 className="text-3xl font-bold text-gray-800 mb-2">
           Create Account
         </h2>
 
-        <p className="text-gray-500 mb-8">
-          Sign up to start playing quizzes
+        <p className="text-gray-500 mb-8 text-sm">
+          Sign up to start playing quizzes with friends
         </p>
 
         {/* Name */}
@@ -93,16 +93,16 @@ export default function Signup() {
           placeholder="Full Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full border p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
+          className="w-full border border-gray-300 p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50 transition"
         />
 
         {/* Email */}
         <input
           type="email"
-          placeholder="Email"
+          placeholder="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full border p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
+          className="w-full border border-gray-300 p-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50 transition"
         />
 
         {/* Password */}
@@ -113,13 +113,13 @@ export default function Signup() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="w-full border border-gray-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50 transition"
           />
 
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-3 text-gray-500"
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
           >
             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
@@ -134,13 +134,13 @@ export default function Signup() {
             placeholder="Confirm Password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="w-full border border-gray-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-gray-50 transition"
           />
 
           <button
             type="button"
             onClick={() => setShowConfirm(!showConfirm)}
-            className="absolute right-3 top-3 text-gray-500"
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
           >
             {showConfirm ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
@@ -151,20 +151,20 @@ export default function Signup() {
         <button
           onClick={handleSignup}
           disabled={loading}
-          className="w-full bg-gradient-to-r from-[#C1121F] to-[#F77F00] text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-60"
+          className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-60"
         >
           {loading ? "Creating Account..." : "Sign Up"}
         </button>
 
         {/* Divider */}
         <div className="flex items-center my-6">
-          <div className="flex-grow border-t"></div>
+          <div className="flex-grow border-t border-gray-300"></div>
           <span className="mx-3 text-gray-400 text-sm">OR</span>
-          <div className="flex-grow border-t"></div>
+          <div className="flex-grow border-t border-gray-300"></div>
         </div>
 
         {/* Google Signup */}
-        <button className="w-full border flex items-center justify-center gap-3 py-3 rounded-lg hover:bg-gray-50 transition">
+        <button className="w-full border border-gray-300 flex items-center justify-center gap-3 py-3 rounded-lg hover:bg-gray-50 transition text-gray-700">
           <img
             src="https://www.svgrepo.com/show/475656/google-color.svg"
             className="w-5"
@@ -173,9 +173,9 @@ export default function Signup() {
         </button>
 
         {/* Login Link */}
-        <p className="text-center text-gray-500 mt-6 text-sm">
+        <p className="text-center text-gray-600 mt-6 text-sm">
           Already have an account?{" "}
-          <Link to="/" className="text-[#C1121F] font-semibold">
+          <Link to="/" className="text-blue-600 font-semibold hover:text-blue-700 transition">
             Login
           </Link>
         </p>
