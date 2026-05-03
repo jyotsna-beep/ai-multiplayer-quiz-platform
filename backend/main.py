@@ -197,7 +197,7 @@ async def generate_quiz(
             }}
         )
 
-        print(f"✅ Generated {len(quiz)} questions for room {room_code}")
+        print(f"Generated {len(quiz)} questions for room {room_code}")
 
         return {
             "questions": quiz,

@@ -12,14 +12,9 @@ export default function Header({ user }) {
       </div>
 
       <div className="header-right">
-        <div className="search-container">
-          <Search size={18} className="search-icon" />
-          <input type="text" placeholder="Search..." className="search-input" />
-        </div>
+        
 
-        <button className="icon-button">
-          <Bell size={20} />
-        </button>
+        
 
         <div className="avatar">
           {user?.name?.[0]?.toUpperCase() || <User size={20} />}
