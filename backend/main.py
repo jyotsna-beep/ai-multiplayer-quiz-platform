@@ -220,79 +220,131 @@ async def generate_quiz(
 # -------------------------
 # Global state for active quizzes
 active_quizzes = {}
-
 async def run_quiz(room_code):
-    room = get_room(room_code)
-    if not room: return
-    
-    questions = room.get("questions", [])
-    if not questions:
-        await broadcast(room_code, {"type": "error", "message": "No questions found."})
-        return
-    
-    time_per_q = room.get("settings", {}).get("time_per_question", 10)
-    
-    # Reset/Initialize room data
-    active_quizzes[room_code] = {
-        "current_question": 0,
-        "first_correct": {},
-        "streaks": {p: 0 for p in room.get("players", [])},
-        "answered": {}
-    }
+    try:
+        room = get_room(room_code)
+        if not room:
+            print("❌ Room not found")
+            return
 
-    # Initialize scores in DB if not present
-    rooms_collection.update_one(
-        {"room_code": room_code},
-        {"$set": {"scores": {p: 0 for p in room.get("players", [])}, "status": "playing"}}
-    )
+        questions = room.get("questions", [])
+        if not questions:
+            await broadcast(room_code, {
+                "type": "error",
+                "message": "No questions found."
+            })
+            return
 
-    for i, q in enumerate(questions):
-        active_quizzes[room_code]["current_question"] = i
-        active_quizzes[room_code]["answered"][i] = set()
-        
-        await broadcast(room_code, {
-            "type": "question",
-            "question": q,
-            "question_number": i + 1,
+        time_per_q = room.get("settings", {}).get("time_per_question", 10)
+
+        #  Initialize quiz state
+        active_quizzes[room_code] = {
+            "current_question": 0,
+            "first_correct": {},
+            "streaks": {p.lower(): 0 for p in room.get("players", [])},
+            "answered": {}
+        }
+
+        #  Initialize scores
+        rooms_collection.update_one(
+            {"room_code": room_code},
+            {"$set": {
+                "scores": {p.lower(): 0 for p in room.get("players", [])},
+                "status": "playing"
+            }}
+        )
+
+        # =========================
+        # MAIN QUIZ LOOP
+        # =========================
+        for i, q in enumerate(questions):
+            try:
+                print(f"Sending Q{i+1}")
+
+                active_quizzes[room_code]["current_question"] = i
+                active_quizzes[room_code]["answered"][i] = set()
+
+                #  Send question
+                await broadcast(room_code, {
+                    "type": "question",
+                    "question": q,
+                    "question_number": i + 1,
+                    "total_questions": len(questions),
+                    "timer": time_per_q
+                })
+
+                # ⏱ Wait for duration
+                await asyncio.sleep(time_per_q)
+
+                print(f"⏱ Time over for Q{i+1}")
+
+                # Get updated scores
+                room = get_room(room_code)
+                scores = room.get("scores", {})
+
+                leaderboard = sorted(
+                    [{"name": p, "score": s} for p, s in scores.items()],
+                    key=lambda x: x["score"],
+                    reverse=True
+                )
+
+                # ✅ Send leaderboard
+                await broadcast(room_code, {
+                    "type": "leaderboard",
+                    "scores": leaderboard
+                })
+
+            except Exception as loop_err:
+                print(f"❌ ERROR in Q{i+1}: {loop_err}")
+
+        # =========================
+        #  GAME OVER
+        # =========================
+        final_room = get_room(room_code)
+        final_scores = final_room.get("scores", {})
+
+        leaderboard = sorted(
+            [{"name": p, "score": s} for p, s in final_scores.items()],
+            key=lambda x: x["score"],
+            reverse=True
+        )
+
+        # Save history
+        history_collection.insert_one({
+            "room_code": room_code,
+            "questions": questions,
+            "players": final_scores,
+            "leaderboard": leaderboard,
             "total_questions": len(questions),
-            "timer": time_per_q
+            "difficulty": final_room.get("settings", {}).get("difficulty", "medium"),
+            "time_per_question": time_per_q,
+            "source_file": final_room.get("filename", "Generated Text"),
+            "created_at": datetime.utcnow()
         })
 
-        await asyncio.sleep(time_per_q)
+        # Mark completed
+        rooms_collection.update_one(
+            {"room_code": room_code},
+            {"$set": {
+                "status": "completed",
+                "completed_at": datetime.utcnow()
+            }}
+        )
 
-    # FINAL RE-FETCH FOR ACCURATE SCORES
-    final_room = get_room(room_code)
-    final_scores = final_room.get("scores", {})
-    leaderboard = sorted(
-        [{"name": p, "score": s} for p, s in final_scores.items()],
-        key=lambda x: x["score"], reverse=True
-    )
+        # Send game over
+        await broadcast(room_code, {
+            "type": "game_over",
+            "scores": leaderboard
+        })
 
-    # Save to History
-    history_collection.insert_one({
-        "room_code": room_code,
-        "questions": questions,
-        "players": final_scores,
-        "leaderboard": leaderboard,
-        "total_questions": len(questions),
-        "difficulty": final_room.get("settings", {}).get("difficulty", "medium"),
-        "time_per_question": time_per_q,
-        "source_file": final_room.get("filename", "Generated Text"),
-        "created_at": datetime.utcnow()
-    })
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR in run_quiz: {e}")
 
-    # Mark room as completed
-    rooms_collection.update_one(
-        {"room_code": room_code},
-        {"$set": {"status": "completed", "completed_at": datetime.utcnow()}}
-    )
+    finally:
+        # Always cleanup safely
+        if room_code in active_quizzes:
+            active_quizzes.pop(room_code)
 
-    await broadcast(room_code, {
-        "type": "game_over",
-        "scores": leaderboard
-    })
-    
-    active_quizzes.pop(room_code, None)
 
 @app.websocket("/ws/{room_code}")
 async def quiz_websocket(websocket: WebSocket, room_code: str):
