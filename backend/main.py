@@ -294,6 +294,9 @@ async def run_quiz(room_code):
                     "scores": leaderboard
                 })
 
+                # Transition delay before next question
+                await asyncio.sleep(2)
+
             except Exception as loop_err:
                 print(f"❌ ERROR in Q{i+1}: {loop_err}")
 
