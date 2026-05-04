@@ -228,6 +228,9 @@ async def run_quiz(room_code):
             return
 
         questions = room.get("questions", [])
+        print(f"[QUIZ INIT] Got {len(questions)} questions from room {room_code}")
+        print(f"[QUIZ INIT] Questions: {[q.get('question', 'N/A')[:50] for q in questions]}")
+        
         if not questions:
             await broadcast(room_code, {
                 "type": "error",
@@ -259,12 +262,14 @@ async def run_quiz(room_code):
         # =========================
         for i, q in enumerate(questions):
             try:
-                print(f"Sending Q{i+1}")
+                print(f"\n[QUIZ LOOP] Starting Q{i+1}/{len(questions)}")
+                print(f"[QUIZ LOOP] Remaining questions: {len(questions) - i}")
 
                 active_quizzes[room_code]["current_question"] = i
                 active_quizzes[room_code]["answered"][i] = set()
 
                 #  Send question
+                print(f"[QUIZ] Broadcasting Q{i+1}")
                 await broadcast(room_code, {
                     "type": "question",
                     "question": q,
@@ -272,15 +277,22 @@ async def run_quiz(room_code):
                     "total_questions": len(questions),
                     "timer": time_per_q
                 })
+                print(f"[QUIZ] Q{i+1} broadcasted successfully ✅")
 
                 # ⏱ Wait for duration
+                print(f"[QUIZ] Waiting {time_per_q}s for answers...")
                 await asyncio.sleep(time_per_q)
 
-                print(f"⏱ Time over for Q{i+1}")
+                print(f"[QUIZ] ⏱ Time over for Q{i+1}, fetching scores")
 
-                # Get updated scores
+                # Verify room still exists
                 room = get_room(room_code)
+                if not room:
+                    print(f"[QUIZ ERROR] Room disappeared after Q{i+1}!")
+                    break
+                    
                 scores = room.get("scores", {})
+                print(f"[QUIZ] Current scores: {scores}")
 
                 leaderboard = sorted(
                     [{"name": p, "score": s} for p, s in scores.items()],
@@ -289,16 +301,23 @@ async def run_quiz(room_code):
                 )
 
                 # ✅ Send leaderboard
+                print(f"[QUIZ] Broadcasting leaderboard for Q{i+1}")
                 await broadcast(room_code, {
                     "type": "leaderboard",
                     "scores": leaderboard
                 })
+                print(f"[QUIZ] Leaderboard sent ✅, waiting 2s before Q{i+2}")
 
                 # Transition delay before next question
                 await asyncio.sleep(2)
+                print(f"[QUIZ] Ready for Q{i+2} ✅")
 
             except Exception as loop_err:
-                print(f"❌ ERROR in Q{i+1}: {loop_err}")
+                print(f"\n❌❌❌ ERROR in Q{i+1}: {loop_err}")
+                import traceback
+                traceback.print_exc()
+                print(f"Attempting to continue to next question...")
+                continue
 
         # =========================
         #  GAME OVER
@@ -405,13 +424,17 @@ async def quiz_websocket(websocket: WebSocket, room_code: str):
         while True:
             data = await websocket.receive_json()
             event = data.get("event")
+            print(f"[WS EVENT] {player_name} sent event: {event}")
 
             if event == "start_quiz":
                 if player_name == room["host"]:
+                    print(f"[WS] Starting quiz for room {room_code}")
                     asyncio.create_task(run_quiz(room_code))
 
             elif event == "answer":
-                if room_code not in active_quizzes: continue
+                if room_code not in active_quizzes:
+                    print(f"[WS] No active quiz for room {room_code}")
+                    continue
                 
                 quiz_state = active_quizzes[room_code]
                 q_index = quiz_state["current_question"]
